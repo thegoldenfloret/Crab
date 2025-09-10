@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crab Simulator</title>
+    <style>
+        /* Basic reset to make the game full screen */
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+            cursor: crosshair; /* Helps to see the cursor position */
+        }
+
+        #game-area {
+            overflow: hidden;
+            user-select: none;
+            width: 100%;
+            height: 100%;
+            position: relative; /* Needed to position the 'world' inside */
+            background-color: #D2B48C; /* A sand-like fallback color */
+        }
+
+        #world {
+            position: absolute;
+            width: 20480px; /* Increased size */
+            height: 20480px; /* Increased size */
+            background-image: url('https://placehold.co/128x128/D2B48C/D2B48C?text=Sand'); /* Placeholder */
+            background-repeat: repeat;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+
+        /* New overlay for light and shade with passing cloud effect */
+        #light-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: radial-gradient(
+                ellipse at center,
+                rgba(16, 32, 48, 0.0) 0%,
+                rgba(16, 32, 48, 0.8) 70%,
+                rgba(16, 32, 48, 0.8) 100%
+            );
+            background-size: 400% 400%; /* Large size to create a soft, wide shadow */
+            pointer-events: none; /* Allows clicks to pass through */
+            z-index: 200; /* Above everything except tutorial text */
+            opacity: 1; /* Start dark */
+            transition: opacity 5s ease-in-out; /* Smooth transition */
+        }
+
+        /* --- Seaweed Styling --- */
+        .seaweed {
+            position: absolute;
+            width: 246px;
+            height: 430px;
+            background-image: url('https://placehold.co/246x430/228B22/000000?text=Seaweed'); /* Placeholder */
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center bottom;
+            opacity: 0.8;
+            transform-origin: bottom center;
+            animation: sway 6s ease-in-out infinite;
+            z-index: 150; /* Set a higher z-index to appear in front of the crab */
+        }
+
+        /* --- Crab Styling --- */
+        .crab { /* Changed from #crab to a class for reusability */
+            position: absolute;
+            width: 281px;
+            height: 196px;
+            z-index: 100; /* Crab is on a lower layer than the seaweed */
+            transform-origin: center center;
+            will-change: transform, left, top;
+        }
+
+        .crab-part {
+            position: absolute;
+        }
+
+        .crab-body { /* Changed from #crab-body */
+            width: 100%;
+            height: 100%;
+            background-image: url('https://placehold.co/281x196/FF4500/FFFFFF?text=Crab'); /* Placeholder */
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 10;
+        }
+        
+        /* --- Simplified Arm Styling (Debug Placeholders) --- */
+        .arm {
+            width: 57px;
+            height: 82px;
+            transform-origin: top center;
+            top: 170px;
+            z-index: 5; 
+        }
+
+        .right-arm { /* Changed from #right-arm */
+            background-color: rgba(255, 0, 0, 0.6); /* Red placeholder */
+            left: 25px;
+        }
+        
+        .left-arm { /* Fix: Corrected the left position */
+            background-color: rgba(0, 0, 255, 0.6); /* Blue placeholder */
+            left: 200px;
+        }
+       
+        .right-claw { /* Changed from #right-claw */
+            width: 197px;
+            height: 77px;
+            background-image: url('https://placehold.co/197x77/FFA500/FFFFFF?text=R-Open');
+            background-size: contain;
+            background-repeat: no-repeat;
+            transform-origin: top left; /* Pivot from corner */
+            top: 82px; /* Positioned at the bottom of the arm */
+            left: calc(57px / 2); /* Position pivot at arm's center */
+            z-index: 6; /* On top of the arm */
+        }
+
+        .left-claw { /* Changed from #left-claw */
+            width: 197px;
+            height: 77px;
+            background-image: url('https://placehold.co/197x77/0000FF/FFFFFF?text=L-Open');
+            background-size: contain;
+            background-repeat: no-repeat;
+            transform-origin: top right; /* Pivot from corner */
+            top: 82px; /* Positioned at the bottom of the arm */
+            left: calc(57px / 2 - 197px); /* Position pivot at arm's center */
+            z-index: 6; /* On top of the arm */
+        }
+
+        /* --- Tutorial Elements --- */
+        #subtitle {
+            position: absolute;
+            bottom: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: black;
+            font-family: 'High Tower Text', serif;
+            font-style: italic;
+            font-size: 24px;
+            transition: opacity 1s ease-in-out;
+            z-index: 200;
+            pointer-events: none; /* So it doesn't block clicks */
+        }
+
+        #hermit-character {
+            position: absolute;
+            /* No longer positioned relative to the screen */
+            width: 182px;
+            height: 152px;
+            background-image: url('https://placehold.co/182x152/C2B280/FFFFFF?text=Hermit');
+            background-size: contain;
+            background-repeat: no-repeat;
+            transition: opacity 1s ease-in-out;
+            z-index: 95; /* Below crab, above sand objects */
+            pointer-events: none;
+        }
+
+        .shell {
+            position: absolute;
+            width: 182px; /* Same size as hermit for consistency */
+            height: 152px;
+            background-image: url('https://placehold.co/182x152/D2B48C/FFFFFF?text=Shell');
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 90; /* Below the crab but above the sand */
+            transition: opacity 1s ease-in-out;
+            /* Added a padding to increase clickable area */
+            padding: 20px;
+        }
+
+        /* --- Animations --- */
+        @keyframes sway {
+            0%, 100% { transform: rotateZ(-5deg); }
+            50% { transform: rotateZ(5deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-area">
+        <div id="world">
+            <!-- Crab, Seaweed, and Shells will be added here by script -->
+        </div>
+        <div id="subtitle"></div>
+        <div id="light-overlay"></div>
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('game-area');
+        const world = document.getElementById('world');
+        const lightOverlay = document.getElementById('light-overlay');
+        const seaweedCount = 12;
+        const worldSize = 20480;
+
+        let crab = null;
+        let hermitCharacter, subtitle;
+
+        // Pilgrim NPCs
+        let pilgrims = [];
+
+        // Arm part references
+        let rightArm, rightClawEl;
+        let leftArm, leftClawEl;
+        
+        // --- Game State ---
+        let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let mouseState = { leftDown: false, rightDown: false };
+        let activeControl = 'none'; // 'none', 'left', 'right'
+        let leftClawClosed = false;
+        let rightClawClosed = false;
+        
+        let tutorialState = {
+            leftClicked: false,
+            rightClicked: false,
+            movementExplained: false
+        };
+
+        let crabState = {
+            x: worldSize / 2,
+            y: worldSize / 2,
+            angle: 0,
+            width: 281,
+            height: 196,
+            // Store the last known angles for the inactive arm
+            rightArmAngle: 0,
+            leftArmAngle: 0,
+            rightClawAngle: 0,
+            leftClawAngle: 0,
+            friends: [] // Array to hold friends' state objects
+        };
+        let camera = {
+            zoom: 0.8,
+            minZoom: Math.min(window.innerWidth / worldSize, window.innerHeight / worldSize),
+            maxZoom: 1.2
+        };
+
+        let lightCycleTimer = 0;
+        let lastTimestamp = 0;
+
+        // --- Event Listeners ---
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = event.clientX;
+            mouse.y = event.clientY;
+        });
+
+        window.addEventListener('wheel', (event) => {
+            const zoomSpeed = 0.05;
+            if (event.deltaY > 0) {
+                camera.zoom -= zoomSpeed;
+            } else {
+                camera.zoom += zoomSpeed;
+            }
+            camera.zoom = Math.max(camera.minZoom, Math.min(camera.maxZoom, camera.zoom));
+        });
+
+        window.addEventListener('mousedown', (event) => {
+            if (event.button === 0) { // Left click
+                mouseState.leftDown = true;
+                tutorialState.leftClicked = true;
+                if (activeControl === 'left') {
+                    leftClawClosed = !leftClawClosed;
+                } else {
+                    activeControl = 'left';
+                }
+            } else if (event.button === 2) { // Right click
+                mouseState.rightDown = true;
+                tutorialState.rightClicked = true;
+                if (activeControl === 'right') {
+                    rightClawClosed = !rightClawClosed;
+                } else {
+                    activeControl = 'right';
+                }
+            }
+            updateClawImages();
+
+            if (tutorialState.leftClicked && tutorialState.rightClicked && !tutorialState.movementExplained) {
+                startMovementTutorial();
+            }
+        });
+
+        window.addEventListener('mouseup', (event) => {
+            if (event.button === 0) { // Left release
+                mouseState.leftDown = false;
+            } else if (event.button === 2) { // Right release
+                mouseState.rightDown = false;
+            }
+        });
+
+
+        window.addEventListener('contextmenu', (event) => event.preventDefault());
+        
+        window.onload = function() {
+            subtitle = document.getElementById('subtitle');
+            subtitle.textContent = 'right mouse button for right claw, left mouse button for left claw.';
+            
+            createSeaweed();
+            createCrab();
+
+            // Create and position the hermit character in the world
+            hermitCharacter = document.createElement('div');
+            hermitCharacter.id = 'hermit-character';
+            const hermitWidth = 182;
+            const hermitHeight = 152;
+            // Position it just above the crab's starting point on the sand
+            const hermitX = crabState.x - hermitWidth / 2;
+            const hermitY = crabState.y - crabState.height / 2 - hermitHeight - 50; // 50px gap
+            hermitCharacter.style.left = `${hermitX}px`;
+            hermitCharacter.style.top = `${hermitY}px`;
+            world.appendChild(hermitCharacter);
+            
+            gameLoop(0); // Start the game loop with initial timestamp
+        };
+
+        const imageUrls = {
+            leftOpen: 'https://placehold.co/197x77/0000FF/FFFFFF?text=L-Open',
+            leftClosed: 'https://placehold.co/197x77/FF0000/FFFFFF?text=L-Closed',
+            rightOpen: 'https://placehold.co/197x77/FFA500/FFFFFF?text=R-Open',
+            rightClosed: 'https://placehold.co/197x77/00FF00/FFFFFF?text=R-Closed',
+            hermit: 'https://placehold.co/182x152/C2B280/FFFFFF?text=Hermit',
+            shell: 'https://placehold.co/182x152/D2B48C/FFFFFF?text=Shell',
+            claw_closed: 'https://placehold.co/197x77/FF0000/FFFFFF?text=CLOSED',
+            claw_open: 'https://placehold.co/197x77/FFA500/FFFFFF?text=OPEN',
+            crab_body: 'https://placehold.co/281x196/FF4500/FFFFFF?text=Crab'
+        };
+
+        function updateClawImages() {
+            leftClawEl.style.backgroundImage = `url('${leftClawClosed ? 'https://placehold.co/197x77/FF0000/FFFFFF?text=L-Closed' : 'https://placehold.co/197x77/0000FF/FFFFFF?text=L-Open'}')`;
+            rightClawEl.style.backgroundImage = `url('${rightClawClosed ? 'https://placehold.co/197x77/00FF00/FFFFFF?text=R-Closed' : 'https://placehold.co/197x77/FFA500/FFFFFF?text=R-Open'}')`;
+        }
+        
+        function startMovementTutorial() {
+            tutorialState.movementExplained = true; // Prevent re-triggering
+            subtitle.textContent = 'move the cursor and your crab will follow.';
+
+            // After 4 seconds, show the zoom text
+            setTimeout(() => {
+                subtitle.textContent = 'use the mouse wheel to zoom in and out.';
+
+                // After another 4 seconds, fade zoom text and change hermit to shell
+                setTimeout(() => {
+                    subtitle.style.opacity = '0';
+                    hermitCharacter.style.backgroundImage = `url('${imageUrls.shell}')`;
+
+                    // After another 4 seconds, fade the shell out
+                    setTimeout(() => {
+                        hermitCharacter.style.opacity = '0';
+                        // Use another timeout to spawn the shell after the fade animation completes
+                        setTimeout(spawnRandomShell, 1000); // 1s matches the CSS transition
+                    }, 4000);
+
+                }, 4000);
+
+            }, 4000);
+        }
+
+        function handleShellClick(event) {
+            const clickedShell = event.currentTarget;
+            
+            // Immediately change the image to hermit and show subtitles
+            clickedShell.style.backgroundImage = `url('${imageUrls.hermit}')`;
+            subtitle.style.opacity = '1';
+            subtitle.textContent = 'the rock pool is a mirror of your own.';
+
+            // Wait 4 seconds, then update subtitle text
+            setTimeout(() => {
+                subtitle.textContent = 'whatever you do is echoed back to you.';
+            }, 4000);
+
+            // Wait another 4 seconds (total 8 seconds), then change the hermit back and start fading subtitles
+            setTimeout(() => {
+                subtitle.style.opacity = '0';
+                
+                // Immediately change back to shell with no fade
+                clickedShell.style.backgroundImage = `url('${imageUrls.shell}')`;
+
+                // After 4 seconds, fade out the shell
+                setTimeout(() => {
+                    clickedShell.style.opacity = '0';
+                    setTimeout(() => {
+                        clickedShell.remove(); // Clean up the DOM
+                        spawnPilgrimCrab(); // Spawn the first pilgrim
+                        spawnThirdShell(); // Now spawn the third shell
+                    }, 1000); // Wait for fade out
+                }, 4000);
+
+            }, 8000); // Total time: 4s (line 1) + 4s (line 2) = 8s
+        }
+
+        function handleThirdShellClick(event) {
+            const clickedShell = event.currentTarget;
+            
+            clickedShell.style.backgroundImage = `url('${imageUrls.hermit}')`;
+            subtitle.style.opacity = '1';
+            subtitle.textContent = 'the sand too, that you tread, was once you';
+
+            setTimeout(() => {
+                subtitle.style.opacity = '0';
+                clickedShell.style.backgroundImage = `url('${imageUrls.shell}')`;
+
+                setTimeout(() => {
+                    clickedShell.style.opacity = '0';
+                    setTimeout(() => {
+                        clickedShell.remove();
+                        spawnPilgrimCrab(); // Spawn the second pilgrim
+                    }, 1000);
+                }, 4000);
+
+            }, 4000);
+        }
+
+        function spawnRandomShell() {
+            const shellEl = document.createElement('div');
+            shellEl.classList.add('shell');
+            
+            // Spawn in a truly random location on the map
+            const shellWidth = 182;
+            const shellHeight = 152;
+            const x = Math.random() * (worldSize - shellWidth); 
+            const y = Math.random() * (worldSize - shellHeight);
+
+            shellEl.style.left = `${x}px`;
+            shellEl.style.top = `${y}px`;
+            world.appendChild(shellEl);
+
+            // Make the shell clickable to spawn the next pilgrim
+            shellEl.addEventListener('click', handleShellClick, { once: true });
+
+            spawnPilgrimCrab(); // Spawn the first NPC crab
+        }
+
+        function spawnThirdShell() {
+            const shellEl = document.createElement('div');
+            shellEl.classList.add('shell');
+            
+            // Spawn in a truly random location on the map
+            const shellWidth = 182;
+            const shellHeight = 152;
+            const x = Math.random() * (worldSize - shellWidth); 
+            const y = Math.random() * (worldSize - shellHeight);
+
+            shellEl.style.left = `${x}px`;
+            shellEl.style.top = `${y}px`;
+            world.appendChild(shellEl);
+
+            // Make the shell clickable with the new handler
+            shellEl.addEventListener('click', handleThirdShellClick, { once: true });
+        }
+
+
+        function spawnPilgrimCrab() {
+            const newPilgrimCrab = document.createElement('div');
+            newPilgrimCrab.className = 'crab'; 
+
+            const body = document.createElement('div');
+            body.className = 'crab-part crab-body';
+
+            const rightArm = document.createElement('div');
+            rightArm.className = 'crab-part arm right-arm';
+            const rightClawEl = document.createElement('div');
+            rightClawEl.className = 'crab-part right-claw';
+
+            const leftArm = document.createElement('div');
+            leftArm.className = 'crab-part arm left-arm';
+            const leftClawEl = document.createElement('div');
+            leftClawEl.className = 'crab-part left-claw';
+            
+            // Pilgrims start with closed claws
+            leftClawEl.style.backgroundImage = `url('https://placehold.co/197x77/FF0000/FFFFFF?text=L-Closed')`;
+            rightClawEl.style.backgroundImage = `url('https://placehold.co/197x77/00FF00/FFFFFF?text=R-Closed')`;
+
+            rightArm.appendChild(rightClawEl);
+            leftArm.appendChild(leftClawEl);
+            newPilgrimCrab.appendChild(body);
+            newPilgrimCrab.appendChild(rightArm);
+            newPilgrimCrab.appendChild(leftArm);
+            
+            world.appendChild(newPilgrimCrab);
+
+            const pilgrimWidth = 281;
+            const pilgrimHeight = 196;
+            const x = Math.random() * (worldSize - pilgrimWidth);
+            const y = Math.random() * (worldSize - pilgrimHeight);
+
+            const pilgrimState = {
+                x: x,
+                y: y,
+                angle: Math.random() * 360,
+                width: pilgrimWidth,
+                height: pilgrimHeight,
+                speed: 1, 
+                targetX: Math.random() * (worldSize - pilgrimWidth),
+                targetY: Math.random() * (worldSize - pilgrimHeight),
+                domElements: {
+                    rightArm: rightArm,
+                    rightClaw: rightClawEl,
+                    leftArm: leftArm,
+                    leftClaw: leftClawEl
+                },
+                swayTime: Math.random() * 2000, 
+                clawTime: Math.random() * 2000,
+                clawsClosed: true,
+                state: 'wandering', // The core state: wandering, courting, or following
+                leader: null, // The crab it is following
+                followDistance: 400 // Distance to maintain when following
+            };
+
+            pilgrims.push({ domElement: newPilgrimCrab, state: pilgrimState });
+        }
+
+        function createSeaweed() {
+            for (let i = 0; i < seaweedCount; i++) {
+                const seaweedEl = document.createElement('div');
+                seaweedEl.classList.add('seaweed');
+                const x = Math.random() * (worldSize - 246); 
+                const y = Math.random() * (worldSize - 430); 
+                seaweedEl.style.left = `${x}px`;
+                seaweedEl.style.top = `${y}px`;
+                const duration = Math.random() * 5 + 4;
+                const delay = Math.random() * 5;
+                seaweedEl.style.animationDuration = `${duration}s`;
+                seaweedEl.style.animationDelay = `-${delay}s`;
+                world.appendChild(seaweedEl);
+            }
+        }
+        
+        function createCrab() {
+            crab = document.createElement('div');
+            crab.id = 'crab';
+            crab.className = 'crab'; 
+
+            const body = document.createElement('div');
+            body.className = 'crab-part crab-body';
+
+            rightArm = document.createElement('div');
+            rightArm.className = 'crab-part arm right-arm';
+            rightClawEl = document.createElement('div');
+            rightClawEl.className = 'crab-part right-claw';
+
+            leftArm = document.createElement('div');
+            leftArm.className = 'crab-part arm left-arm';
+            leftClawEl = document.createElement('div');
+            leftClawEl.className = 'crab-part left-claw';
+
+            rightArm.appendChild(rightClawEl);
+            leftArm.appendChild(leftClawEl);
+            crab.appendChild(body);
+            crab.appendChild(rightArm);
+            crab.appendChild(leftArm);
+            
+            crab.style.left = `${crabState.x - crabState.width / 2}px`;
+            crab.style.top = `${crabState.y - crabState.height / 2}px`;
+
+            world.appendChild(crab);
+        }
+        
+        // --- Math Helpers (Asymmetrical Corner Pivots) ---
+        const ARM_LENGTH = 82;
+        const CLAW_WIDTH = 197;
+        const CLAW_HEIGHT = 77;
+        const CLAW_EFFECTIVE_LENGTH = Math.sqrt(CLAW_WIDTH * CLAW_WIDTH + CLAW_HEIGHT * CLAW_HEIGHT); 
+        const RIGHT_CLAW_INTERNAL_ANGLE_RAD = Math.atan2(CLAW_HEIGHT, CLAW_WIDTH);
+        const LEFT_CLAW_INTERNAL_ANGLE_RAD = Math.atan2(CLAW_HEIGHT, -CLAW_WIDTH);
+
+        function solveIK(shoulderX, shoulderY, targetX, targetY, armLength, clawLength, isLeftHand) {
+            const dx = targetX - shoulderX;
+            const dy = targetY - shoulderY;
+            const distSq = dx * dx + dy * dy;
+            const dist = Math.sqrt(distSq);
+
+            const L1 = armLength;
+            const L2 = clawLength;
+            let armAngleRad, clawAngleRad;
+            
+            if (dist >= L1 + L2) {
+                const angle = Math.atan2(dy, dx);
+                armAngleRad = angle;
+                clawAngleRad = angle;
+            } else {
+                const angle1 = Math.atan2(dy, dx);
+                if (dist < Math.abs(L1 - L2)) {
+                    armAngleRad = angle1;
+                    clawAngleRad = angle1 + Math.PI;
+                } else {
+                    const angle2 = Math.acos((distSq + L1 * L1 - L2 * L2) / (2 * dist * L1));
+                    
+                    if (isLeftHand) armAngleRad = angle1 - angle2;
+                    else armAngleRad = angle1 + angle2;
+                
+                    const wristX = shoulderX + L1 * Math.cos(armAngleRad);
+                    const wristY = shoulderY + L1 * Math.sin(armAngleRad);
+                
+                    clawAngleRad = Math.atan2(targetY - wristY, targetX - wristX);
+                }
+            }
+            return { armAngleRad, clawAngleRad };
+        }
+
+        // Updated function to update pilgrim claws
+        function updatePilgrimClaws(pilgrim) {
+            if (pilgrim.state.clawsClosed) {
+                pilgrim.state.domElements.leftClaw.style.backgroundImage = `url('https://placehold.co/197x77/FF0000/FFFFFF?text=L-Closed')`;
+                pilgrim.state.domElements.rightClaw.style.backgroundImage = `url('https://placehold.co/197x77/00FF00/FFFFFF?text=R-Closed')`;
+            } else {
+                 pilgrim.state.domElements.leftClaw.style.backgroundImage = `url('https://placehold.co/197x77/0000FF/FFFFFF?text=L-Open')`;
+                pilgrim.state.domElements.rightClaw.style.backgroundImage = `url('https://placehold.co/197x77/FFA500/FFFFFF?text=R-Open')`;
+            }
+
+            pilgrim.state.clawTime += 2; 
+            const baseClawRotation = Math.sin(pilgrim.state.clawTime * 0.002) * 20; 
+            
+            pilgrim.state.domElements.leftClaw.style.transform = `rotate(${baseClawRotation}deg)`;
+            pilgrim.state.domElements.rightClaw.style.transform = `rotate(${-baseClawRotation}deg)`;
+
+            const armSwayAngle = Math.sin(pilgrim.state.clawTime * 0.002 + Math.PI / 4) * 8; 
+            pilgrim.state.domElements.leftArm.style.transform = `rotate(${armSwayAngle}deg)`;
+            pilgrim.state.domElements.rightArm.style.transform = `rotate(${-armSwayAngle}deg)`;
+        }
+
+        function areCrabsColliding(crab1, crab2) {
+            const dx = crab1.x - crab2.x;
+            const dy = crab1.y - crab2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            // Collision radius is half the average of their width and height
+            const r1 = (crab1.width + crab1.height) / 4;
+            const r2 = (crab2.width + crab2.height) / 4;
+            return distance < (r1 + r2);
+        }
+
+        function checkProximityAndFriendship(pilgrim) {
+            const isLight = lightOverlay.style.opacity < 0.5;
+            if (!isLight) return; // Only court in the light
+            if (pilgrim.state.state !== 'wandering') return; // Only check if wandering
+            
+            let potentialFriend = null;
+            let minDistance = 600; // Search radius for a friend
+
+            // Check against player
+            const dxPlayer = crabState.x - pilgrim.state.x;
+            const dyPlayer = crabState.y - pilgrim.state.y;
+            const distancePlayer = Math.sqrt(dxPlayer * dxPlayer + dyPlayer * dyPlayer);
+
+            if (distancePlayer < minDistance) {
+                if (leftClawClosed && rightClawClosed) {
+                    potentialFriend = { state: crabState, clawsClosed: true, id: 'player' };
+                    minDistance = distancePlayer;
+                }
+            }
+
+            // Check against other pilgrims
+            for (const otherPilgrim of pilgrims) {
+                if (otherPilgrim.domElement === pilgrim.domElement || otherPilgrim.state.state !== 'wandering') continue;
+
+                const dx = otherPilgrim.state.x - pilgrim.state.x;
+                const dy = otherPilgrim.state.y - pilgrim.state.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < minDistance) {
+                     if (otherPilgrim.state.clawsClosed) {
+                        potentialFriend = { state: otherPilgrim.state, clawsClosed: true, id: otherPilgrim.domElement };
+                        minDistance = distance;
+                    }
+                }
+            }
+
+            if (potentialFriend) {
+                // Transition to courting state
+                pilgrim.state.state = 'courting';
+                pilgrim.state.leader = potentialFriend.state;
+                pilgrim.state.clawsClosed = true;
+            }
+        }
+        
+        function gameLoop(timestamp) {
+            if (!crab) { requestAnimationFrame(gameLoop); return; }
+
+            const deltaTime = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+
+            // --- Light Cycle ---
+            lightCycleTimer = (lightCycleTimer + deltaTime) % 40000; // 40 seconds total
+            let opacity = 1;
+
+            if (lightCycleTimer < 15000) { // 15s dark
+                opacity = 1;
+            } else if (lightCycleTimer < 20000) { // 5s fade to light
+                opacity = 1 - (lightCycleTimer - 15000) / 5000;
+            } else if (lightCycleTimer < 25000) { // 5s light
+                opacity = 0;
+            } else { // 15s fade to dark
+                opacity = (lightCycleTimer - 25000) / 15000;
+            }
+            lightOverlay.style.opacity = opacity;
+
+            // --- Main Crab Movement & Rotation ---
+            const crabScreenCenterX = window.innerWidth / 2;
+            const crabScreenCenterY = window.innerHeight / 2;
+
+            const dx = mouse.x - crabScreenCenterX;
+            const dy = mouse.y - crabScreenCenterY;
+            const screenDistance = Math.sqrt(dx * dx + dy * dy);
+            
+            const stopRadius = 340;
+            const worldDistance = screenDistance / camera.zoom;
+            let playerSpeed = 0;
+
+            if (worldDistance > stopRadius) {
+                const angleRad = Math.atan2(dy, dx);
+                const angleDeg = angleRad * (180 / Math.PI) - 90; 
+                crabState.angle = angleDeg;
+
+                const speedFactor = 0.03;
+                const maxSpeed = 8;
+                playerSpeed = Math.min(maxSpeed, (worldDistance - stopRadius) * speedFactor); 
+                crabState.x += Math.cos(angleRad) * playerSpeed;
+                crabState.y += Math.sin(angleRad) * playerSpeed;
+            }
+
+            crabState.x = Math.max(crabState.width / 2, Math.min(worldSize - crabState.width / 2, crabState.x));
+            crabState.y = Math.max(crabState.height / 2, Math.min(worldSize - crabState.height / 2, crabState.y));
+            
+            crab.style.left = `${crabState.x - crabState.width / 2}px`;
+            crab.style.top = `${crabState.y - crabState.height / 2}px`;
+            crab.style.transform = `rotate(${crabState.angle}deg)`;
+            
+            // --- Update Camera ---
+            world.style.transformOrigin = `${crabState.x}px ${crabState.y}px`;
+            const cameraX = -crabState.x + window.innerWidth / 2;
+            const cameraY = -crabState.y + window.innerHeight / 2;
+            world.style.transform = `translate3d(${cameraX}px, ${cameraY}px, 0) scale(${camera.zoom})`;
+            
+            // --- Arm Control Logic ---
+            const armPivotOffsetY = 170 - crabState.height / 2;
+            const rightArmPivotOffsetX = (25 + 57 / 2) - crabState.width / 2;
+            const leftArmPivotOffsetX = (200 + 57 / 2) - crabState.width / 2; /* Fix: Using corrected left position */
+            
+            const crabAngleRad = crabState.angle * (Math.PI / 180);
+            const cosCrab = Math.cos(crabAngleRad);
+            const sinCrab = Math.sin(crabAngleRad);
+
+            const rightShoulderX = crabScreenCenterX + (rightArmPivotOffsetX * cosCrab - armPivotOffsetY * sinCrab) * camera.zoom;
+            const rightShoulderY = crabScreenCenterY + (rightArmPivotOffsetX * sinCrab + armPivotOffsetY * cosCrab) * camera.zoom;
+            const leftShoulderX = crabScreenCenterX + (leftArmPivotOffsetX * cosCrab - armPivotOffsetY * sinCrab) * camera.zoom;
+            const leftShoulderY = crabScreenCenterY + (leftArmPivotOffsetX * sinCrab + armPivotOffsetY * cosCrab) * camera.zoom;
+            
+            const scaledArmLength = ARM_LENGTH * camera.zoom;
+            const scaledClawLength = CLAW_EFFECTIVE_LENGTH * camera.zoom;
+            
+            let finalRightArmAngleDeg, finalRightClawAngleDeg, finalLeftArmAngleDeg, finalLeftClawAngleDeg;
+
+            let currentControl = activeControl;
+            if (mouseState.leftDown && mouseState.rightDown) {
+                currentControl = 'both';
+            }
+
+            if (currentControl === 'right') {
+                const { armAngleRad, clawAngleRad } = solveIK(rightShoulderX, rightShoulderY, mouse.x, mouse.y, scaledArmLength, scaledClawLength, false);
+                const armWorldAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                const clawWorldAngleDeg = (clawAngleRad - RIGHT_CLAW_INTERNAL_ANGLE_RAD) * (180 / Math.PI);
+
+                finalRightArmAngleDeg = armWorldAngleDeg;
+                finalRightClawAngleDeg = clawWorldAngleDeg - armWorldAngleDeg;
+                finalLeftArmAngleDeg = crabState.leftArmAngle;
+                finalLeftClawAngleDeg = crabState.leftClawAngle;
+
+            } else if (currentControl === 'left') { 
+                const { armAngleRad, clawAngleRad } = solveIK(leftShoulderX, leftShoulderY, mouse.x, mouse.y, scaledArmLength, scaledClawLength, true);
+                const armWorldAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                const clawWorldAngleDeg = (clawAngleRad - LEFT_CLAW_INTERNAL_ANGLE_RAD) * (180 / Math.PI);
+
+                finalLeftArmAngleDeg = armWorldAngleDeg;
+                finalLeftClawAngleDeg = clawWorldAngleDeg - armWorldAngleDeg;
+                finalRightArmAngleDeg = crabState.rightArmAngle;
+                finalRightClawAngleDeg = crabState.rightClawAngle;
+
+            } else if (currentControl === 'both') {
+                const clawSeparation = 150; // screen pixels
+                const mouseAngleRad = Math.atan2(mouse.y - crabScreenCenterY, mouse.x - crabScreenCenterX);
+                
+                const offsetX = (clawSeparation / 2) * Math.cos(mouseAngleRad + Math.PI / 2);
+                const offsetY = (clawSeparation / 2) * Math.sin(mouseAngleRad + Math.PI / 2);
+
+                const targetLeftX = mouse.x - offsetX;
+                const targetLeftY = mouse.y - offsetY;
+                const targetRightX = mouse.x + offsetX;
+                const targetRightY = mouse.y + offsetY;
+
+                // Left Arm
+                {
+                    const { armAngleRad, clawAngleRad } = solveIK(leftShoulderX, leftShoulderY, targetLeftX, targetLeftY, scaledArmLength, scaledClawLength, true);
+                    const armWorldAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                    const clawWorldAngleDeg = (clawAngleRad - LEFT_CLAW_INTERNAL_ANGLE_RAD) * (180 / Math.PI);
+                    finalLeftArmAngleDeg = armWorldAngleDeg;
+                    finalLeftClawAngleDeg = clawWorldAngleDeg - armWorldAngleDeg;
+                }
+                // Right Arm
+                {
+                    const { armAngleRad, clawAngleRad } = solveIK(rightShoulderX, rightShoulderY, targetRightX, targetRightY, scaledArmLength, scaledClawLength, false);
+                    const armWorldAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                    const clawWorldAngleDeg = (clawAngleRad - RIGHT_CLAW_INTERNAL_ANGLE_RAD) * (180 / Math.PI);
+                    finalRightArmAngleDeg = armWorldAngleDeg;
+                    finalRightClawAngleDeg = clawWorldAngleDeg - armWorldAngleDeg;
+                }
+
+            } else { // currentControl is 'none'
+                finalRightArmAngleDeg = crabState.rightArmAngle;
+                finalRightClawAngleDeg = crabState.rightClawAngle;
+                finalLeftArmAngleDeg = crabState.leftArmAngle;
+                finalLeftClawAngleDeg = crabState.leftClawAngle;
+            }
+            
+            crabState.rightArmAngle = finalRightArmAngleDeg;
+            crabState.rightClawAngle = finalRightClawAngleDeg;
+            crabState.leftArmAngle = finalLeftArmAngleDeg;
+            crabState.leftClawAngle = finalLeftClawAngleDeg;
+
+            // Apply final rotations relative to parents
+            rightArm.style.transform = `rotate(${crabState.rightArmAngle - crabState.angle}deg)`;
+            leftArm.style.transform = `rotate(${crabState.leftArmAngle - crabState.angle}deg)`;
+            rightClawEl.style.transform = `rotate(${crabState.rightClawAngle}deg)`;
+            leftClawEl.style.transform = `rotate(${crabState.leftClawAngle}deg)`;
+
+            // --- Pilgrim NPC AI ---
+            for (const pilgrim of pilgrims) {
+                const state = pilgrim.state;
+                const element = pilgrim.domElement;
+                
+                // State Machine Logic
+                switch (state.state) {
+                    case 'wandering':
+                        checkProximityAndFriendship(pilgrim);
+                        
+                        // Wander logic
+                        const dxToTarget = state.targetX - state.x;
+                        const dyToTarget = state.targetY - state.y;
+                        const distToTarget = Math.sqrt(dxToTarget * dxToTarget + dyToTarget * dyToTarget);
+
+                        if (distToTarget < 100) { 
+                            state.targetX = Math.random() * (worldSize - state.width);
+                            state.targetY = Math.random() * (worldSize - state.height);
+                        }
+                        const targetAngle = Math.atan2(dyToTarget, dxToTarget) * (180 / Math.PI) - 90;
+                        let angleDiff = targetAngle - state.angle;
+                        while (angleDiff < -180) angleDiff += 360;
+                        while (angleDiff > 180) angleDiff -= 360;
+
+                        const turnAmount = 0.5; 
+                        if (Math.abs(angleDiff) > turnAmount) {
+                            state.angle += (angleDiff > 0 ? turnAmount : -turnAmount);
+                        } else {
+                            state.angle = targetAngle;
+                        }
+                        state.angle = (state.angle + 360) % 360;
+
+                        const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                        state.x += Math.cos(moveAngleRad) * state.speed;
+                        state.y += Math.sin(moveAngleRad) * state.speed;
+                        
+                        break;
+
+                    case 'courting':
+                        if (!state.leader) {
+                            state.state = 'wandering';
+                            break;
+                        }
+
+                        // Update target to leader's current position
+                        state.targetX = state.leader.x;
+                        state.targetY = state.leader.y;
+
+                        // Move slowly towards the target
+                        const dxToLeader = state.targetX - state.x;
+                        const dyToLeader = state.targetY - state.y;
+                        const distToLeader = Math.sqrt(dxToLeader * dxToLeader + dyToLeader * dyToLeader);
+                        
+                        // Check for body-to-body collision to transition
+                        if (areCrabsColliding(state, state.leader)) {
+                            state.state = 'following';
+                            state.clawsClosed = true;
+                        } else {
+                            const targetAngle = Math.atan2(dyToLeader, dxToLeader) * (180 / Math.PI) - 90;
+                            let angleDiff = targetAngle - state.angle;
+                            while (angleDiff < -180) angleDiff += 360;
+                            while (angleDiff > 180) angleDiff -= 360;
+                            const turnAmount = 0.5; 
+                            if (Math.abs(angleDiff) > turnAmount) {
+                                state.angle += (angleDiff > 0 ? turnAmount : -turnAmount);
+                            } else {
+                                state.angle = targetAngle;
+                            }
+                            state.angle = (state.angle + 360) % 360;
+
+                            const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                            state.x += Math.cos(moveAngleRad) * 1; // slow speed
+                            state.y += Math.sin(moveAngleRad) * 1;
+                        }
+                        break;
+
+                    case 'following':
+                        if (!state.leader) {
+                            state.state = 'wandering';
+                            break;
+                        }
+
+                        // Calculate a target position behind the leader
+                        const leaderAngleRad = (state.leader.angle + 90) * Math.PI / 180;
+                        const targetX = state.leader.x - state.followDistance * Math.cos(leaderAngleRad);
+                        const targetY = state.leader.y - state.followDistance * Math.sin(leaderAngleRad);
+
+                        const dxToFollowTarget = targetX - state.x;
+                        const dyToFollowTarget = targetY - state.y;
+                        const distToFollowTarget = Math.sqrt(dxToFollowTarget * dxToFollowTarget + dyToFollowTarget * dyToFollowTarget);
+                        
+                        if (distToFollowTarget > 100) { // Move only if too far away
+                            const followAngle = Math.atan2(dyToFollowTarget, dxToFollowTarget) * (180 / Math.PI) - 90;
+                            let angleDiff = followAngle - state.angle;
+                            while (angleDiff < -180) angleDiff += 360;
+                            while (angleDiff > 180) angleDiff -= 360;
+                            const turnAmount = 1; 
+                            if (Math.abs(angleDiff) > turnAmount) {
+                                state.angle += (angleDiff > 0 ? turnAmount : -turnAmount);
+                            } else {
+                                state.angle = followAngle;
+                            }
+                            state.angle = (state.angle + 360) % 360;
+
+                            const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                            state.x += Math.cos(moveAngleRad) * state.speed;
+                            state.y += Math.sin(moveAngleRad) * state.speed;
+                        }
+
+                        break;
+                }
+
+                // Clamp position to world bounds
+                state.x = Math.max(state.width / 2, Math.min(worldSize - state.width / 2, state.x));
+                state.y = Math.max(state.height / 2, Math.min(worldSize - state.height / 2, state.y));
+
+                // Update DOM
+                element.style.left = `${state.x - state.width / 2}px`;
+                element.style.top = `${state.y - state.height / 2}px`;
+                element.style.transform = `rotate(${state.angle}deg)`;
+
+                // Update Arm Sway
+                updatePilgrimClaws(pilgrim);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
