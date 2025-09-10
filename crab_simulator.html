@@ -28,7 +28,7 @@
             position: absolute;
             width: 20480px; /* Increased size */
             height: 20480px; /* Increased size */
-            background-image: url('https://placehold.co/128x128/D2B48C/D2B48C?text=Sand'); /* Placeholder */
+            background-image: url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/sand.png'); /* Updated URL */
             background-repeat: repeat;
             transform-style: preserve-3d;
             will-change: transform;
@@ -59,7 +59,7 @@
             position: absolute;
             width: 246px;
             height: 430px;
-            background-image: url('https://placehold.co/246x430/228B22/000000?text=Seaweed'); /* Placeholder */
+            background-image: url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/seaweed.png'); /* Updated URL */
             background-size: contain;
             background-repeat: no-repeat;
             background-position: center bottom;
@@ -86,7 +86,7 @@
         .crab-body { /* Changed from #crab-body */
             width: 100%;
             height: 100%;
-            background-image: url('https://placehold.co/281x196/FF4500/FFFFFF?text=Crab'); /* Placeholder */
+            background-image: url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/crab.png'); /* Updated URL */
             background-size: contain;
             background-repeat: no-repeat;
             z-index: 10;
@@ -114,7 +114,7 @@
         .right-claw { /* Changed from #right-claw */
             width: 197px;
             height: 77px;
-            background-image: url('https://placehold.co/197x77/FFA500/FFFFFF?text=R-Open');
+            background-image: url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/r-open.png'); /* Updated URL */
             background-size: contain;
             background-repeat: no-repeat;
             transform-origin: top left; /* Pivot from corner */
@@ -126,7 +126,7 @@
         .left-claw { /* Changed from #left-claw */
             width: 197px;
             height: 77px;
-            background-image: url('https://placehold.co/197x77/0000FF/FFFFFF?text=L-Open');
+            background-image: url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/l-open.png'); /* Updated URL */
             background-size: contain;
             background-repeat: no-repeat;
             transform-origin: top right; /* Pivot from corner */
@@ -155,7 +155,7 @@
             /* No longer positioned relative to the screen */
             width: 182px;
             height: 152px;
-            background-image: url('https://placehold.co/182x152/C2B280/FFFFFF?text=Hermit');
+            background-image: url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/hermit.png'); /* Updated URL */
             background-size: contain;
             background-repeat: no-repeat;
             transition: opacity 1s ease-in-out;
@@ -167,7 +167,7 @@
             position: absolute;
             width: 182px; /* Same size as hermit for consistency */
             height: 152px;
-            background-image: url('https://placehold.co/182x152/D2B48C/FFFFFF?text=Shell');
+            background-image: url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/shell.png'); /* Updated URL */
             background-size: contain;
             background-repeat: no-repeat;
             z-index: 90; /* Below the crab but above the sand */
@@ -185,9 +185,12 @@
 </head>
 <body>
     <div id="game-area">
+        <audio id="background-music" src="https://raw.githubusercontent.com/thegoldenfloret/crab/main/audio/music.mp3" loop></audio>
+        <audio id="claw-sound-left" src="https://raw.githubusercontent.com/thegoldenfloret/crab/main/audio/claw.mp3"></audio>
+        <audio id="claw-sound-right" src="https://raw.githubusercontent.com/thegoldenfloret/crab/main/audio/claw.mp3"></audio>
+
         <div id="world">
-            <!-- Crab, Seaweed, and Shells will be added here by script -->
-        </div>
+            </div>
         <div id="subtitle"></div>
         <div id="light-overlay"></div>
     </div>
@@ -244,6 +247,11 @@
         let lightCycleTimer = 0;
         let lastTimestamp = 0;
 
+        // New audio references
+        const backgroundMusic = document.getElementById('background-music');
+        const clawSoundLeft = document.getElementById('claw-sound-left');
+        const clawSoundRight = document.getElementById('claw-sound-right');
+
         // --- Event Listeners ---
         window.addEventListener('mousemove', (event) => {
             mouse.x = event.clientX;
@@ -266,6 +274,10 @@
                 tutorialState.leftClicked = true;
                 if (activeControl === 'left') {
                     leftClawClosed = !leftClawClosed;
+                    if (leftClawClosed) {
+                        clawSoundLeft.currentTime = 0; // Rewind to the start
+                        clawSoundLeft.play();
+                    }
                 } else {
                     activeControl = 'left';
                 }
@@ -274,11 +286,20 @@
                 tutorialState.rightClicked = true;
                 if (activeControl === 'right') {
                     rightClawClosed = !rightClawClosed;
+                    if (rightClawClosed) {
+                        clawSoundRight.currentTime = 0; // Rewind to the start
+                        clawSoundRight.play();
+                    }
                 } else {
                     activeControl = 'right';
                 }
             }
             updateClawImages();
+
+            // Only play music on the very first interaction
+            if (!tutorialState.leftClicked && !tutorialState.rightClicked) {
+                backgroundMusic.play();
+            }
 
             if (tutorialState.leftClicked && tutorialState.rightClicked && !tutorialState.movementExplained) {
                 startMovementTutorial();
@@ -319,20 +340,20 @@
         };
 
         const imageUrls = {
-            leftOpen: 'https://placehold.co/197x77/0000FF/FFFFFF?text=L-Open',
-            leftClosed: 'https://placehold.co/197x77/FF0000/FFFFFF?text=L-Closed',
-            rightOpen: 'https://placehold.co/197x77/FFA500/FFFFFF?text=R-Open',
-            rightClosed: 'https://placehold.co/197x77/00FF00/FFFFFF?text=R-Closed',
-            hermit: 'https://placehold.co/182x152/C2B280/FFFFFF?text=Hermit',
-            shell: 'https://placehold.co/182x152/D2B48C/FFFFFF?text=Shell',
-            claw_closed: 'https://placehold.co/197x77/FF0000/FFFFFF?text=CLOSED',
-            claw_open: 'https://placehold.co/197x77/FFA500/FFFFFF?text=OPEN',
-            crab_body: 'https://placehold.co/281x196/FF4500/FFFFFF?text=Crab'
+            leftOpen: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/l-open.png',
+            leftClosed: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/l-closed.png',
+            rightOpen: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/r-open.png',
+            rightClosed: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/r-closed.png',
+            hermit: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/hermit.png',
+            shell: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/shell.png',
+            claw_closed: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/claw-closed.png',
+            claw_open: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/claw-open.png',
+            crab_body: 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/crab.png'
         };
 
         function updateClawImages() {
-            leftClawEl.style.backgroundImage = `url('${leftClawClosed ? 'https://placehold.co/197x77/FF0000/FFFFFF?text=L-Closed' : 'https://placehold.co/197x77/0000FF/FFFFFF?text=L-Open'}')`;
-            rightClawEl.style.backgroundImage = `url('${rightClawClosed ? 'https://placehold.co/197x77/00FF00/FFFFFF?text=R-Closed' : 'https://placehold.co/197x77/FFA500/FFFFFF?text=R-Open'}')`;
+            leftClawEl.style.backgroundImage = `url('${leftClawClosed ? 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/l-closed.png' : 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/l-open.png'}')`;
+            rightClawEl.style.backgroundImage = `url('${rightClawClosed ? 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/r-closed.png' : 'https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/r-open.png'}')`;
         }
         
         function startMovementTutorial() {
@@ -472,8 +493,8 @@
             leftClawEl.className = 'crab-part left-claw';
             
             // Pilgrims start with closed claws
-            leftClawEl.style.backgroundImage = `url('https://placehold.co/197x77/FF0000/FFFFFF?text=L-Closed')`;
-            rightClawEl.style.backgroundImage = `url('https://placehold.co/197x77/00FF00/FFFFFF?text=R-Closed')`;
+            leftClawEl.style.backgroundImage = `url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/l-closed.png')`;
+            rightClawEl.style.backgroundImage = `url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/r-closed.png')`;
 
             rightArm.appendChild(rightClawEl);
             leftArm.appendChild(leftClawEl);
@@ -605,11 +626,11 @@
         // Updated function to update pilgrim claws
         function updatePilgrimClaws(pilgrim) {
             if (pilgrim.state.clawsClosed) {
-                pilgrim.state.domElements.leftClaw.style.backgroundImage = `url('https://placehold.co/197x77/FF0000/FFFFFF?text=L-Closed')`;
-                pilgrim.state.domElements.rightClaw.style.backgroundImage = `url('https://placehold.co/197x77/00FF00/FFFFFF?text=R-Closed')`;
+                pilgrim.state.domElements.leftClaw.style.backgroundImage = `url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/l-closed.png')`;
+                pilgrim.state.domElements.rightClaw.style.backgroundImage = `url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/r-closed.png')`;
             } else {
-                 pilgrim.state.domElements.leftClaw.style.backgroundImage = `url('https://placehold.co/197x77/0000FF/FFFFFF?text=L-Open')`;
-                pilgrim.state.domElements.rightClaw.style.backgroundImage = `url('https://placehold.co/197x77/FFA500/FFFFFF?text=R-Open')`;
+                 pilgrim.state.domElements.leftClaw.style.backgroundImage = `url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/l-open.png')`;
+                pilgrim.state.domElements.rightClaw.style.backgroundImage = `url('https://raw.githubusercontent.com/thegoldenfloret/crab/main/images/r-open.png')`;
             }
 
             pilgrim.state.clawTime += 2; 
