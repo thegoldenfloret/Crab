@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crab Simulator</title>
+    <style>
+        /* Basic reset to make the game full screen */
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+            cursor: crosshair; /* Helps to see the cursor position */
+        }
+
+        #game-area {
+            overflow: hidden;
+            user-select: none;
+            width: 100%;
+            height: 100%;
+            position: relative; /* Needed to position the 'world' inside */
+            background-color: #D2B48C; /* A sand-like fallback color */
+        }
+
+        #world {
+            position: absolute;
+            width: 20480px; /* Increased size */
+            height: 20480px; /* Increased size */
+            background-image: url('assets/sand.png'); 
+            background-repeat: repeat;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+
+        /* New overlay for light and shade with passing cloud effect */
+        #light-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: radial-gradient(
+                ellipse at center,
+                rgba(16, 32, 48, 0.0) 0%,
+                rgba(16, 32, 48, 0.8) 70%,
+                rgba(16, 32, 48, 0.8) 100%
+            );
+            background-size: 400% 400%; /* Large size to create a soft, wide shadow */
+            pointer-events: none; /* Allows clicks to pass through */
+            z-index: 200; /* Above everything except tutorial text */
+            opacity: 1; /* Start dark */
+            transition: opacity 5s ease-in-out; /* Smooth transition */
+        }
+
+        /* --- Seaweed Styling --- */
+        .seaweed {
+            position: absolute;
+            width: 246px;
+            height: 430px;
+            background-image: url('assets/seaweed.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center bottom;
+            opacity: 0.8;
+            transform-origin: bottom center;
+            animation: sway 6s ease-in-out infinite;
+            z-index: 150; /* Set a higher z-index to appear in front of the crab */
+        }
+
+        /* --- Crab Styling --- */
+        .crab { /* Changed from #crab to a class for reusability */
+            position: absolute;
+            width: 281px;
+            height: 196px;
+            z-index: 100; /* Crab is on a lower layer than the seaweed */
+            transform-origin: center center;
+            will-change: transform, left, top;
+        }
+
+        .crab-part {
+            position: absolute;
+        }
+
+        .crab-body { /* Changed from #crab-body */
+            width: 100%;
+            height: 100%;
+            background-image: url('assets/crab.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 10;
+        }
+        
+        /* --- Arm Styling --- */
+        .arm {
+            width: 57px;
+            height: 82px;
+            transform-origin: top center;
+            top: 170px;
+            z-index: 5;
+            background-size: contain;
+            background-repeat: no-repeat;
+        }
+
+        .right-arm { 
+            background-image: url('assets/rightarm.png');
+            left: 25px;
+        }
+        
+        .left-arm { 
+            background-image: url('assets/leftarm.png');
+            left: 200px;
+        }
+       
+        .right-claw { /* Changed from #right-claw */
+            width: 197px;
+            height: 77px;
+            background-image: url('assets/rightopen.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            transform-origin: top left; /* Pivot from corner */
+            top: 82px; /* Positioned at the bottom of the arm */
+            left: calc(57px / 2); /* Position pivot at arm's center */
+            z-index: 6; /* On top of the arm */
+        }
+
+        .left-claw { /* Changed from #left-claw */
+            width: 197px;
+            height: 77px;
+            background-image: url('assets/leftopen.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            transform-origin: top right; /* Pivot from corner */
+            top: 82px; /* Positioned at the bottom of the arm */
+            left: calc(57px / 2 - 197px); /* Position pivot at arm's center */
+            z-index: 6; /* On top of the arm */
+        }
+        
+        .severed-claw {
+            z-index: 5; /* Above sand, below other crabs */
+        }
+
+        /* --- Tutorial Elements --- */
+        #subtitle {
+            position: absolute;
+            bottom: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: black;
+            font-family: 'High Tower Text', serif;
+            font-style: italic;
+            font-size: 24px;
+            transition: opacity 1s ease-in-out;
+            z-index: 200;
+            pointer-events: none; /* So it doesn't block clicks */
+        }
+
+        #hermit-character {
+            position: absolute;
+            /* No longer positioned relative to the screen */
+            width: 182px;
+            height: 152px;
+            background-image: url('assets/hermit.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            transition: opacity 1s ease-in-out;
+            z-index: 95; /* Below crab, above sand objects */
+            pointer-events: none;
+        }
+
+        .shell {
+            position: absolute;
+            width: 182px; /* Same size as hermit for consistency */
+            height: 152px;
+            background-image: url('assets/shell.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 90; /* Below the crab but above the sand */
+            transition: opacity 1s ease-in-out;
+            /* Added a padding to increase clickable area */
+            padding: 20px;
+        }
+
+        /* --- Animations --- */
+        @keyframes sway {
+            0%, 100% { transform: rotateZ(-5deg); }
+            50% { transform: rotateZ(5deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-area">
+        <div id="world">
+            </div>
+        <div id="subtitle"></div>
+        <div id="light-overlay"></div>
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('game-area');
+        const world = document.getElementById('world');
+        const lightOverlay = document.getElementById('light-overlay');
+        const seaweedCount = 12;
+        const worldSize = 20480;
+
+        let crab = null;
+        let hermitCharacter, subtitle;
+
+        // Pilgrim NPCs
+        let pilgrims = [];
+
+        // Arm part references
+        let rightArm, rightClawEl;
+        let leftArm, leftClawEl;
+        
+        // --- Game State ---
+        let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let mouseState = { leftDown: false, rightDown: false };
+        let activeControl = 'none'; // 'none', 'left', 'right'
+        let leftClawClosed = false;
+        let rightClawClosed = false;
+        
+        let tutorialState = {
+            leftClicked: false,
+            rightClicked: false,
+            movementExplained: false
+        };
+
+        let crabState = {
+            x: worldSize / 2,
+            y: worldSize / 2,
+            angle: 0,
+            width: 281,
+            height: 196,
+            scale: 1.0, // For growth mechanic
+            rightArmAngle: 0,
+            leftArmAngle: 0,
+            rightClawAngle: 0,
+            leftClawAngle: 0,
+            friends: [],
+            isDancing: false,
+            hasLeftArm: true,
+            hasRightArm: true,
+            domElements: {}, // For player crab elements
+            heldClaw: null,
+            eatTimer: 0
+        };
+        let camera = {
+            x: 0,
+            y: 0,
+            zoom: 0.8,
+            minZoom: Math.min(window.innerWidth / worldSize, window.innerHeight / worldSize),
+            maxZoom: 1.2
+        };
+
+        let lightCycleTimer = 0;
+        let lastTimestamp = 0;
+
+        // --- Event Listeners ---
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = event.clientX;
+            mouse.y = event.clientY;
+        });
+
+        window.addEventListener('wheel', (event) => {
+            const zoomSpeed = 0.05;
+            if (event.deltaY > 0) camera.zoom -= zoomSpeed;
+            else camera.zoom += zoomSpeed;
+            camera.zoom = Math.max(camera.minZoom, Math.min(camera.maxZoom, camera.zoom));
+        });
+
+        window.addEventListener('mousedown', (event) => {
+            if (event.button === 0) { // Left click
+                mouseState.leftDown = true;
+                tutorialState.leftClicked = true;
+                if ((activeControl === 'left' || (mouseState.leftDown && mouseState.rightDown)) && crabState.hasLeftArm) {
+                    leftClawClosed = !leftClawClosed;
+                    if (leftClawClosed) {
+                        checkForPlayerAttack(leftClawEl);
+                        checkForClawPickup(leftClawEl, 'left');
+                    } else { // Claw is now open, so drop what's held
+                        if (crabState.heldClaw && crabState.heldClaw.holdingHand === 'left') {
+                            dropHeldClaw();
+                        }
+                    }
