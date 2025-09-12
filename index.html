@@ -1,0 +1,2048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crab Simulator</title>
+    <style>
+        /* Basic reset to make the game full screen */
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100%;
+            width: 100%;
+            cursor: crosshair; /* Helps to see the cursor position */
+        }
+
+        #game-area {
+            overflow: hidden;
+            user-select: none;
+            width: 100%;
+            height: 100%;
+            position: relative; /* Needed to position the 'world' inside */
+            background-color: #D2B48C; /* A sand-like fallback color */
+        }
+
+        #world {
+            position: absolute;
+            width: 4096px; 
+            height: 4096px;
+            background-image: url('./assets/sand.png'); 
+            background-repeat: repeat;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+
+        /* New overlay for light and shade with passing cloud effect */
+        #light-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: radial-gradient(
+                ellipse at center,
+                rgba(16, 32, 48, 0.0) 0%,
+                rgba(16, 32, 48, 0.8) 70%,
+                rgba(16, 32, 48, 0.8) 100%
+            );
+            background-size: 400% 400%; /* Large size to create a soft, wide shadow */
+            pointer-events: none; /* Allows clicks to pass through */
+            z-index: 200; /* Above everything except tutorial text */
+            opacity: 1; /* Start dark */
+            transition: opacity 5s ease-in-out; /* Smooth transition */
+        }
+
+        /* --- Seaweed Styling --- */
+        .seaweed {
+            position: absolute;
+            width: 246px;
+            height: 430px;
+            background-image: url('./assets/seaweed.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center bottom;
+            opacity: 0.8;
+            transform-origin: bottom center;
+            z-index: 150; /* Set a higher z-index to appear in front of the crab */
+        }
+
+        .seaweed-container {
+            position: absolute;
+            width: 246px;
+            height: 430px;
+            transform-origin: bottom center;
+            z-index: 150;
+        }
+
+        /* --- Crab Styling --- */
+        .crab { /* Changed from #crab to a class for reusability */
+            position: absolute;
+            width: 281px;
+            height: 196px;
+            z-index: 100; /* Crab is on a lower layer than the seaweed */
+            transform-origin: center center;
+            will-change: transform, left, top;
+        }
+
+        .crab-part {
+            position: absolute;
+        }
+
+        .crab-body { /* Changed from #crab-body */
+            width: 100%;
+            height: 100%;
+            background-image: url('./assets/crab.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 10;
+        }
+        
+        /* --- Simplified Arm Styling (Debug Placeholders) --- */
+        .arm {
+            width: 57px;
+            height: 82px;
+            transform-origin: top center;
+            top: 170px;
+            z-index: 5; 
+            background-size: contain;
+            background-repeat: no-repeat;
+        }
+
+        .right-arm { /* Changed from #right-arm */
+            background-image: url('./assets/rightarm.png');
+            left: 25px;
+        }
+        
+        .left-arm { /* Fix: Corrected the left position */
+            background-image: url('./assets/leftarm.png');
+            left: 200px;
+        }
+       
+        .right-claw { /* Changed from #right-claw */
+            width: 197px;
+            height: 77px;
+            background-image: url('./assets/rightopen.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            transform-origin: top left; /* Pivot from corner */
+            top: 82px; /* Positioned at the bottom of the arm */
+            left: calc(57px / 2); /* Position pivot at arm's center */
+            z-index: 6; /* On top of the arm */
+        }
+
+        .left-claw { /* Changed from #left-claw */
+            width: 197px;
+            height: 77px;
+            background-image: url('./assets/leftopen.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            transform-origin: top right; /* Pivot from corner */
+            top: 82px; /* Positioned at the bottom of the arm */
+            left: calc(57px / 2 - 197px); /* Position pivot at arm's center */
+            z-index: 6; /* On top of the arm */
+        }
+        
+        .severed-claw {
+            z-index: 5; /* Above sand, below other crabs */
+        }
+
+        /* --- Tutorial Elements --- */
+        #subtitle {
+            position: absolute;
+            bottom: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            color: black;
+            font-family: 'High Tower Text', serif;
+            font-style: italic;
+            font-size: 24px;
+            transition: opacity 1s ease-in-out;
+            z-index: 200;
+            pointer-events: none; /* So it doesn't block clicks */
+        }
+
+        .shell {
+            position: absolute;
+            width: 93px;
+            height: 83px;
+            background-image: url('./assets/shell.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            z-index: 90; /* Below the crab but above the sand */
+            cursor: pointer;
+            transition: opacity 1s ease-in-out;
+        }
+
+        /* --- Animations --- */
+        @keyframes sway {
+            0%, 100% { transform: rotateZ(-5deg); }
+            50% { transform: rotateZ(5deg); }
+        }
+        
+        @keyframes grow {
+            from { transform: scaleY(0); }
+            to { transform: scaleY(1); }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-area">
+        <div id="world">
+            </div>
+        <div id="subtitle"></div>
+        <div id="light-overlay"></div>
+    </div>
+
+    <audio id="slash-sound" src="./assets/slash.wav" preload="auto"></audio>
+    <audio id="music-sound" src="./assets/music.mp3" preload="auto" loop></audio>
+
+    <script>
+        const gameArea = document.getElementById('game-area');
+        const world = document.getElementById('world');
+        const lightOverlay = document.getElementById('light-overlay');
+        const seaweedCount = 12;
+        const worldSize = 4096;
+
+        let crab = null;
+        let subtitle;
+        let seaweeds = []; // For tracking all seaweed
+
+        // New Shell variables
+        let shell1, shell2;
+        let subtitleFadeTimeout = null;
+        const shell2Lines = [
+            "the rock pool is a mirror of your own.",
+            "whatever you do is echoed back to you.",
+            "the sand too, that you tread, was once you",
+            "there is no chance event int the rockpool,",
+            "even little decisions are made on a passing cloud.",
+            "pilgrims wander slowly the sea floor",
+            "approach too fast with open claw and they'll pince or run.",
+            "approach slowly with polite claw and closer they may draw.",
+            "warrior crabs fence, pince their arms to sever their claws.",
+            "crabs consider two buttons down dancing.",
+            "intimacy with followers produces crablets.",
+            "tasty crablets turn followers against you,",
+            "as does violence agaist them.",
+            "everything is edible."
+        ];
+        let shell2LineIndex = 0;
+
+
+        // Pilgrim NPCs
+        let pilgrims = [];
+
+        // Arm part references
+        let rightArm, rightClawEl;
+        let leftArm, leftClawEl;
+        
+        // --- Game State ---
+        let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        let mouseState = { leftDown: false, rightDown: false };
+        let activeControl = 'none'; // 'none', 'left', 'right'
+        let leftClawClosed = false;
+        let rightClawClosed = false;
+        
+        let tutorialState = {
+            leftClicked: false,
+            rightClicked: false,
+            step1Complete: false
+        };
+
+        let crabState = {
+            x: worldSize / 2,
+            y: worldSize / 2,
+            angle: 0,
+            width: 281,
+            height: 196,
+            scale: 1.0, // For growth mechanic
+            rightArmAngle: 0,
+            leftArmAngle: 0,
+            rightClawAngle: 0,
+            leftClawAngle: 0,
+            friends: [],
+            isDancing: false,
+            hasLeftArm: true,
+            hasRightArm: true,
+            domElements: {}, // For player crab elements
+            heldObject: null, // Generic holder for claws or crablets
+            eatTimer: 0
+        };
+        let camera = {
+            x: 0,
+            y: 0,
+            zoom: 0.8,
+            minZoom: Math.max(window.innerWidth / worldSize, window.innerHeight / worldSize),
+            maxZoom: 1.0
+        };
+
+        let lightCycleTimer = 0;
+        let lastTimestamp = 0;
+        let lastMusicPlayTime = -Infinity; // So music can play immediately on the first fight
+        let isFightingGoliath = false;
+        let musicSound;
+        let hasUserInteracted = false;
+
+        // --- Event Listeners ---
+        window.addEventListener('mousemove', (event) => {
+            mouse.x = event.clientX;
+            mouse.y = event.clientY;
+        });
+
+        window.addEventListener('wheel', (event) => {
+            const zoomSpeed = 0.05;
+            if (event.deltaY > 0) camera.zoom -= zoomSpeed;
+            else camera.zoom += zoomSpeed;
+            camera.zoom = Math.max(camera.minZoom, Math.min(camera.maxZoom, camera.zoom));
+        });
+
+        window.addEventListener('mousedown', (event) => {
+            if (!hasUserInteracted) {
+                hasUserInteracted = true;
+            }
+            if (event.button === 0) { // Left click
+                mouseState.leftDown = true;
+                if (!tutorialState.step1Complete) tutorialState.leftClicked = true;
+                if ((activeControl === 'left' || (mouseState.leftDown && mouseState.rightDown)) && crabState.hasLeftArm) {
+                    leftClawClosed = !leftClawClosed;
+                    if (leftClawClosed) {
+                        document.getElementById('slash-sound').play();
+                        checkForPlayerAttack(leftClawEl);
+                        if (!crabState.heldObject) {
+                            checkForSeaweedPickup(leftClawEl, 'left') || 
+                            checkForClawPickup(leftClawEl, 'left') || 
+                            checkForCrabletPickup(leftClawEl, 'left');
+                        }
+                    } else { // Claw is now open, so drop what's held
+                        if (crabState.heldObject && crabState.heldObject.holdingHand === 'left') {
+                            dropHeldObject();
+                        }
+                    }
+                } else {
+                    activeControl = 'left';
+                }
+            } else if (event.button === 2) { // Right click
+                mouseState.rightDown = true;
+                if (!tutorialState.step1Complete) tutorialState.rightClicked = true;
+                 if ((activeControl === 'right' || (mouseState.leftDown && mouseState.rightDown)) && crabState.hasRightArm) {
+                    rightClawClosed = !rightClawClosed;
+                    if(rightClawClosed) {
+                        document.getElementById('slash-sound').play();
+                        checkForPlayerAttack(rightClawEl);
+                        if (!crabState.heldObject) {
+                            checkForSeaweedPickup(rightClawEl, 'right') ||
+                            checkForClawPickup(rightClawEl, 'right') ||
+                            checkForCrabletPickup(rightClawEl, 'right');
+                        }
+                    } else { // Claw is now open, so drop what's held
+                        if (crabState.heldObject && crabState.heldObject.holdingHand === 'right') {
+                            dropHeldObject();
+                        }
+                    }
+                } else {
+                    activeControl = 'right';
+                }
+            }
+            updateClawImages();
+
+            // NEW simplified tutorial logic
+            if (!tutorialState.step1Complete && tutorialState.leftClicked && tutorialState.rightClicked) {
+                tutorialState.step1Complete = true;
+                
+                if (subtitleFadeTimeout) clearTimeout(subtitleFadeTimeout);
+
+                subtitle.textContent = 'move the cursor and your crab will follow. wheel to zoom in and out.';
+                subtitle.style.opacity = '1'; // Ensure it's visible
+
+                subtitleFadeTimeout = setTimeout(() => {
+                    subtitle.style.opacity = '0';
+                }, 6000);
+
+                // Fade out shell 1 after 6 seconds
+                setTimeout(() => {
+                    shell1.style.opacity = '0';
+                }, 6000);
+            }
+        });
+
+        window.addEventListener('mouseup', (event) => {
+            if (event.button === 0) {
+                mouseState.leftDown = false;
+            }
+            else if (event.button === 2) {
+                mouseState.rightDown = false;
+            }
+        });
+
+
+        window.addEventListener('contextmenu', (event) => event.preventDefault());
+        
+        window.onload = function() {
+            subtitle = document.getElementById('subtitle');
+            subtitle.textContent = 'right mouse button for right claw, left mouse button for left claw.';
+            
+            musicSound = document.getElementById('music-sound');
+
+            initializeSeaweed();
+            createCrab();
+            spawnPilgrimCrab(); // Start with one NPC
+            
+            // Create Shell 1 (Tutorial)
+            shell1 = document.createElement('div');
+            shell1.classList.add('shell');
+            const shell1X = crabState.x - 93 / 2;
+            const shell1Y = crabState.y - crabState.height / 2 - 83 - 20; // Above crab
+            shell1.style.left = `${shell1X}px`;
+            shell1.style.top = `${shell1Y}px`;
+            world.appendChild(shell1);
+
+            // Create Shell 2 (Oracle)
+            shell2 = document.createElement('div');
+            shell2.classList.add('shell');
+            const shell2X = Math.random() * (worldSize - 93);
+            const shell2Y = Math.random() * (worldSize - 83);
+            shell2.style.left = `${shell2X}px`;
+            shell2.style.top = `${shell2Y}px`;
+            world.appendChild(shell2);
+            shell2.addEventListener('click', handleShell2Click);
+            
+            gameLoop(0); 
+        };
+        
+        function handleShell2Click() {
+            if (subtitleFadeTimeout) {
+                clearTimeout(subtitleFadeTimeout);
+            }
+
+            subtitle.textContent = shell2Lines[shell2LineIndex];
+            subtitle.style.opacity = '1';
+
+            shell2LineIndex = (shell2LineIndex + 1) % shell2Lines.length;
+
+            subtitleFadeTimeout = setTimeout(() => {
+                subtitle.style.opacity = '0';
+            }, 4000);
+        }
+
+        const imageUrls = {
+            leftOpen: './assets/leftopen.png',
+            leftClosed: './assets/leftclosed.png',
+            rightOpen: './assets/rightopen.png',
+            rightClosed: './assets/rightclosed.png'
+        };
+
+        function updateClawImages() {
+            if (crabState.hasLeftArm) leftClawEl.style.backgroundImage = `url('${leftClawClosed ? imageUrls.leftClosed : imageUrls.leftOpen}')`;
+            if (crabState.hasRightArm) rightClawEl.style.backgroundImage = `url('${rightClawClosed ? imageUrls.rightClosed : imageUrls.rightOpen}')`;
+        }
+        
+        function spawnCrablet(parent1State, parent2State) {
+            const newCrabEl = document.createElement('div');
+            newCrabEl.className = 'crab';
+
+            const body = document.createElement('div');
+            body.className = 'crab-part crab-body';
+            const rightArmEl = document.createElement('div');
+            rightArmEl.className = 'crab-part arm right-arm';
+            const rightClawElement = document.createElement('div');
+            rightClawElement.className = 'crab-part right-claw';
+            const leftArmEl = document.createElement('div');
+            leftArmEl.className = 'crab-part arm left-arm';
+            const leftClawElement = document.createElement('div');
+            leftClawElement.className = 'crab-part left-claw';
+            
+            leftClawElement.style.backgroundImage = `url('${imageUrls.leftClosed}')`;
+            rightClawElement.style.backgroundImage = `url('${imageUrls.rightClosed}')`;
+
+            rightArmEl.appendChild(rightClawElement);
+            leftArmEl.appendChild(leftClawElement);
+            newCrabEl.appendChild(body);
+            newCrabEl.appendChild(rightArmEl);
+            newCrabEl.appendChild(leftArmEl);
+            
+            world.appendChild(newCrabEl);
+            
+            const x = (parent1State.x + parent2State.x) / 2;
+            const y = (parent1State.y + parent2State.y) / 2 + 100;
+
+            const crabletState = {
+                x: x, y: y, angle: Math.random() * 360,
+                width: 281, height: 196, speed: 1.2,
+                targetX: x + (Math.random() - 0.5) * 500,
+                targetY: y + (Math.random() - 0.5) * 500,
+                domElements: { rightArm: rightArmEl, rightClaw: rightClawElement, leftArm: leftArmEl, leftClaw: leftClawElement },
+                swayTime: Math.random() * 2000, clawTime: Math.random() * 2000,
+                clawsClosed: true,
+                state: 'wandering', 
+                leader: null, followDistance: 300,
+                fleeTimer: 0, fleeFrom: null,
+                hasLeftArm: true, hasRightArm: true,
+                targetCrab: null, attackCooldown: 0,
+                isAttacking: false,
+                attackPhase: 'none', 
+                attackTimer: 0,
+                strafeDirection: 1,
+                strafeTimer: 0,
+                attackArm: null,
+                targetLimb: null,
+                initialAttackAngles: null,
+                targetAttackAngles: null,
+                heldObject: null,
+                scavengeTarget: null,
+                rescueTarget: null,
+                targetSeaweed: null,
+                isCrablet: true,
+                scale: 0.1,
+                collisionWithPlayerTimer: 0
+            };
+
+            pilgrims.push({ domElement: newCrabEl, state: crabletState });
+        }
+
+
+        function spawnPilgrimCrab() {
+            const newPilgrimCrab = document.createElement('div');
+            newPilgrimCrab.className = 'crab'; 
+
+            const body = document.createElement('div');
+            body.className = 'crab-part crab-body';
+            const rightArmEl = document.createElement('div');
+            rightArmEl.className = 'crab-part arm right-arm';
+            const rightClawElement = document.createElement('div');
+            rightClawElement.className = 'crab-part right-claw';
+            const leftArmEl = document.createElement('div');
+            leftArmEl.className = 'crab-part arm left-arm';
+            const leftClawElement = document.createElement('div');
+            leftClawElement.className = 'crab-part left-claw';
+            
+            leftClawElement.style.backgroundImage = `url('${imageUrls.leftClosed}')`;
+            rightClawElement.style.backgroundImage = `url('${imageUrls.rightClosed}')`;
+
+            rightArmEl.appendChild(rightClawElement);
+            leftArmEl.appendChild(leftClawElement);
+            newPilgrimCrab.appendChild(body);
+            newPilgrimCrab.appendChild(rightArmEl);
+            newPilgrimCrab.appendChild(leftArmEl);
+            
+            world.appendChild(newPilgrimCrab);
+
+            const pilgrimWidth = 281;
+            const pilgrimHeight = 196;
+            const x = Math.random() * (worldSize - pilgrimWidth);
+            const y = Math.random() * (worldSize - pilgrimHeight);
+
+            const pilgrimState = {
+                x: x, y: y, angle: Math.random() * 360,
+                width: pilgrimWidth, height: pilgrimHeight, speed: 1, 
+                targetX: Math.random() * (worldSize - pilgrimWidth),
+                targetY: Math.random() * (worldSize - pilgrimHeight),
+                domElements: { rightArm: rightArmEl, rightClaw: rightClawElement, leftArm: leftArmEl, leftClaw: leftClawElement },
+                swayTime: Math.random() * 2000, clawTime: Math.random() * 2000,
+                clawsClosed: true,
+                state: 'wandering', 
+                leader: null, followDistance: 300,
+                fleeTimer: 0, fleeFrom: null,
+                hasLeftArm: true, hasRightArm: true,
+                targetCrab: null, attackCooldown: 0,
+                isAttacking: false,
+                attackPhase: 'none', 
+                attackTimer: 0,
+                strafeDirection: 1,
+                strafeTimer: 0,
+                attackArm: null,
+                targetLimb: null,
+                initialAttackAngles: null,
+                targetAttackAngles: null,
+                heldObject: null,
+                scavengeTarget: null,
+                rescueTarget: null,
+                targetSeaweed: null,
+                isCrablet: false,
+                scale: 1.0,
+                collisionWithPlayerTimer: 0
+            };
+
+            pilgrims.push({ domElement: newPilgrimCrab, state: pilgrimState });
+        }
+        
+        function spawnSeaweed() {
+            const seaweedContainer = document.createElement('div');
+            seaweedContainer.classList.add('seaweed-container');
+
+            const seaweedEl = document.createElement('div');
+            seaweedEl.classList.add('seaweed');
+            seaweedContainer.appendChild(seaweedEl);
+
+            const x = Math.random() * (worldSize - 246);
+            const y = Math.random() * (worldSize - 430);
+            seaweedContainer.style.left = `${x}px`;
+            seaweedContainer.style.top = `${y}px`;
+            
+            // Growth animation on container
+            seaweedContainer.style.animation = 'grow 30s linear forwards';
+
+            // Swaying animation on inner element
+            const duration = Math.random() * 5 + 4;
+            const delay = Math.random() * 5;
+            seaweedEl.style.animation = `sway ${duration}s ease-in-out infinite`;
+            seaweedEl.style.animationDelay = `-${delay}s`;
+
+            world.appendChild(seaweedContainer);
+            seaweeds.push(seaweedContainer); // Add to the tracking array
+        }
+
+        function initializeSeaweed() {
+            for (let i = 0; i < seaweedCount; i++) {
+                const seaweedContainer = document.createElement('div');
+                seaweedContainer.classList.add('seaweed-container');
+
+                const seaweedEl = document.createElement('div');
+                seaweedEl.classList.add('seaweed');
+                seaweedContainer.appendChild(seaweedEl);
+
+                const x = Math.random() * (worldSize - 246);
+                const y = Math.random() * (worldSize - 430);
+                seaweedContainer.style.left = `${x}px`;
+                seaweedContainer.style.top = `${y}px`;
+                
+                const duration = Math.random() * 5 + 4;
+                const delay = Math.random() * 5;
+                seaweedEl.style.animation = `sway ${duration}s ease-in-out infinite`;
+                seaweedEl.style.animationDelay = `-${delay}s`;
+
+                world.appendChild(seaweedContainer);
+                seaweeds.push(seaweedContainer);
+            }
+        }
+        
+        function createCrab() {
+            crab = document.createElement('div');
+            crab.id = 'crab';
+            crab.className = 'crab'; 
+
+            const body = document.createElement('div');
+            body.className = 'crab-part crab-body';
+            rightArm = document.createElement('div');
+            rightArm.className = 'crab-part arm right-arm';
+            rightClawEl = document.createElement('div');
+            rightClawEl.className = 'crab-part right-claw';
+            leftArm = document.createElement('div');
+            leftArm.className = 'crab-part arm left-arm';
+            leftClawEl = document.createElement('div');
+            leftClawEl.className = 'crab-part left-claw';
+
+            rightArm.appendChild(rightClawEl);
+            leftArm.appendChild(leftClawEl);
+            crab.appendChild(body);
+            crab.appendChild(rightArm);
+            crab.appendChild(leftArm);
+            
+            crab.style.left = `${crabState.x - crabState.width / 2}px`;
+            crab.style.top = `${crabState.y - crabState.height / 2}px`;
+
+            world.appendChild(crab);
+            crabState.domElements = { rightArm, rightClaw: rightClawEl, leftArm, leftClaw: leftClawEl, body: body };
+        }
+        
+        const ARM_LENGTH = 82;
+        const CLAW_WIDTH = 197;
+        const CLAW_HEIGHT = 77;
+        const CLAW_EFFECTIVE_LENGTH = Math.sqrt(CLAW_WIDTH * CLAW_WIDTH + CLAW_HEIGHT * CLAW_HEIGHT); 
+        const RIGHT_CLAW_INTERNAL_ANGLE_RAD = Math.atan2(CLAW_HEIGHT, CLAW_WIDTH);
+        const LEFT_CLAW_INTERNAL_ANGLE_RAD = Math.atan2(CLAW_HEIGHT, -CLAW_WIDTH);
+
+        function solveIK(shoulderX, shoulderY, targetX, targetY, armLength, clawLength, isLeftHand) {
+            const dx = targetX - shoulderX;
+            const dy = targetY - shoulderY;
+            const distSq = dx * dx + dy * dy;
+            const dist = Math.sqrt(distSq);
+
+            const L1 = armLength; const L2 = clawLength;
+            let armAngleRad, clawAngleRad;
+            
+            if (dist >= L1 + L2) {
+                const angle = Math.atan2(dy, dx);
+                armAngleRad = angle;
+                clawAngleRad = angle;
+            } else {
+                const angle1 = Math.atan2(dy, dx);
+                if (dist < Math.abs(L1 - L2)) {
+                    armAngleRad = angle1;
+                    clawAngleRad = angle1 + Math.PI;
+                } else {
+                    const denominator = 2 * dist * L1;
+                    if (Math.abs(denominator) < 0.0001) { // Avoid division by zero when zoomed out
+                        const angle = Math.atan2(dy, dx);
+                        return { armAngleRad: angle, clawAngleRad: angle };
+                    }
+
+                    const acosArg = (distSq + L1 * L1 - L2 * L2) / denominator;
+            
+                    const acosArgClamped = Math.max(-1, Math.min(1, acosArg));
+
+                    const angle2 = Math.acos(acosArgClamped);
+                    if (isLeftHand) armAngleRad = angle1 - angle2;
+                    else armAngleRad = angle1 + angle2;
+                    const wristX = shoulderX + L1 * Math.cos(armAngleRad);
+                    const wristY = shoulderY + L1 * Math.sin(armAngleRad);
+                    clawAngleRad = Math.atan2(targetY - wristY, targetX - wristX);
+                }
+            }
+            return { armAngleRad, clawAngleRad };
+        }
+
+        function updatePilgrimClaws(pilgrim) {
+            if (pilgrim.state.hasLeftArm && pilgrim.state.domElements.leftClaw) {
+                pilgrim.state.domElements.leftClaw.style.backgroundImage = `url('${pilgrim.state.clawsClosed ? imageUrls.leftClosed : imageUrls.leftOpen}')`;
+            }
+             if (pilgrim.state.hasRightArm && pilgrim.state.domElements.rightClaw) {
+                pilgrim.state.domElements.rightClaw.style.backgroundImage = `url('${pilgrim.state.clawsClosed ? imageUrls.rightClosed : imageUrls.rightOpen}')`;
+            }
+
+            pilgrim.state.clawTime += 2; 
+            const baseClawRotation = Math.sin(pilgrim.state.clawTime * 0.002) * 20; 
+            const armSwayAngle = Math.sin(pilgrim.state.clawTime * 0.002 + Math.PI / 4) * 8; 
+
+            if (pilgrim.state.hasLeftArm && pilgrim.state.domElements.leftArm) {
+                pilgrim.state.domElements.leftClaw.style.transform = `rotate(${baseClawRotation}deg)`;
+                pilgrim.state.domElements.leftArm.style.transform = `rotate(${armSwayAngle}deg)`;
+            }
+            if (pilgrim.state.hasRightArm && pilgrim.state.domElements.rightArm) {
+                pilgrim.state.domElements.rightClaw.style.transform = `rotate(${-baseClawRotation}deg)`;
+                pilgrim.state.domElements.rightArm.style.transform = `rotate(${-armSwayAngle}deg)`;
+            }
+        }
+        
+        function areCrabsColliding(crab1, crab2) {
+            if (!crab1 || !crab2) return false;
+            const dx = crab1.x - crab2.x;
+            const dy = crab1.y - crab2.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const r1 = (crab1.width * (crab1.scale || 1.0) + crab1.height * (crab1.scale || 1.0)) / 4;
+            const r2 = (crab2.width * (crab2.scale || 1.0) + crab2.height * (crab2.scale || 1.0)) / 4;
+            return distance < (r1 + r2);
+        }
+        
+        function getAbsoluteBoundingBox(element) {
+            const rect = element.getBoundingClientRect();
+            const screenCenterX = window.innerWidth / 2;
+            const screenCenterY = window.innerHeight / 2;
+            const worldX = (rect.left - screenCenterX) / camera.zoom + crabState.x;
+            const worldY = (rect.top - screenCenterY) / camera.zoom + crabState.y;
+            const worldWidth = rect.width / camera.zoom;
+            const worldHeight = rect.height / camera.zoom;
+            return { x: worldX, y: worldY, width: worldWidth, height: worldHeight };
+        }
+
+        function getSocketBox(crabObjState, limbSide) {
+            const scale = crabObjState.scale || 1.0;
+            const armPivotOffsetY = 170 - crabObjState.height / 2;
+            const pivotOffsetX = limbSide === 'left' 
+                ? (200 + 57 / 2) - crabObjState.width / 2 
+                : (25 + 57 / 2) - crabObjState.width / 2;
+
+            const crabAngleRad = crabObjState.angle * (Math.PI / 180);
+            const cosCrab = Math.cos(crabAngleRad);
+            const sinCrab = Math.sin(crabAngleRad);
+
+            const socketWorldX = crabObjState.x + ((pivotOffsetX * cosCrab - armPivotOffsetY * sinCrab) * scale);
+            const socketWorldY = crabObjState.y + ((pivotOffsetX * sinCrab + armPivotOffsetY * cosCrab) * scale);
+            
+            const socketSize = 20;
+            return {
+                x: socketWorldX - socketSize / 2,
+                y: socketWorldY - socketSize / 2,
+                width: socketSize,
+                height: socketSize
+            };
+        }
+
+        function checkAABBCollision(box1, box2) {
+            return (
+                box1.x < box2.x + box2.width &&
+                box1.x + box1.width > box2.x &&
+                box1.y < box2.y + box2.height &&
+                box1.y + box1.height > box2.y
+            );
+        }
+
+        function findNearestSeveredClaw(x, y, radius) {
+            const severedClaws = document.querySelectorAll('.severed-claw');
+            let closestClaw = null;
+            let minDistanceSq = radius * radius;
+
+            for (const claw of severedClaws) {
+                if (crabState.heldObject && crabState.heldObject.element === claw) continue;
+                
+                const clawX = parseFloat(claw.style.left);
+                const clawY = parseFloat(claw.style.top);
+                const dx = clawX - x;
+                const dy = clawY - y;
+                const distanceSq = dx * dx + dy * dy;
+                if (distanceSq < minDistanceSq) {
+                    minDistanceSq = distanceSq;
+                    closestClaw = claw;
+                }
+            }
+            return closestClaw;
+        }
+
+        function findNearestSeaweed(x, y, radius) {
+            let closestSeaweed = null;
+            let minDistanceSq = radius * radius;
+
+            for (const seaweed of seaweeds) {
+                const seaweedX = parseFloat(seaweed.style.left) + 246 / 2;
+                const seaweedY = parseFloat(seaweed.style.top) + 430 / 2;
+                const dx = seaweedX - x;
+                const dy = seaweedY - y;
+                const distanceSq = dx * dx + dy * dy;
+
+                if (distanceSq < minDistanceSq) {
+                    minDistanceSq = distanceSq;
+                    closestSeaweed = seaweed;
+                }
+            }
+            return closestSeaweed;
+        }
+
+        function checkProximityAndFriendship(pilgrim) {
+            const isLight = lightOverlay.style.opacity < 0.5;
+            if (!isLight) return; 
+            if (pilgrim.state.state !== 'wandering') return;
+
+            let potentialFriend = null;
+            let minDistance = 600;
+
+            const dxPlayer = crabState.x - pilgrim.state.x;
+            const dyPlayer = crabState.y - pilgrim.state.y;
+            const distancePlayer = Math.sqrt(dxPlayer * dxPlayer + dyPlayer * dyPlayer);
+
+            if (distancePlayer < minDistance) {
+                if ((leftClawClosed && rightClawClosed) || crabState.isDancing) {
+                    potentialFriend = { state: crabState, clawsClosed: true, id: 'player' };
+                    minDistance = distancePlayer;
+                }
+            }
+
+            for (const otherPilgrim of pilgrims) {
+                if (otherPilgrim.domElement === pilgrim.domElement) continue; 
+                if (otherPilgrim.state.state === 'courting' || otherPilgrim.state.state === 'warrior') continue;
+                if (otherPilgrim.state.leader === pilgrim.state) continue;
+
+                const dx = otherPilgrim.state.x - pilgrim.state.x;
+                const dy = otherPilgrim.state.y - pilgrim.state.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < minDistance) {
+                    if (otherPilgrim.state.clawsClosed) {
+                        potentialFriend = { state: otherPilgrim.state, clawsClosed: true, id: otherPilgrim.domElement };
+                        minDistance = distance;
+                    }
+                }
+            }
+
+            if (potentialFriend) {
+                pilgrim.state.state = 'courting';
+                pilgrim.state.leader = potentialFriend.state;
+                pilgrim.state.clawsClosed = true; 
+            }
+        }
+
+        function detachLimb(crabObject, limb) {
+            const state = crabObject.state || crabObject;
+            const armEl = state.domElements[limb + 'Arm'];
+            const clawEl = state.domElements[limb + 'Claw'];
+
+            if (!armEl || !clawEl) return;
+
+            const clawRect = clawEl.getBoundingClientRect();
+            const screenCenterX = window.innerWidth / 2;
+            const screenCenterY = window.innerHeight / 2;
+            const finalX = (clawRect.left - screenCenterX) / camera.zoom + crabState.x;
+            const finalY = (clawRect.top - screenCenterY) / camera.zoom + crabState.y;
+            
+            const parentTransform = (state.domElements[limb + 'Arm'] || crab).style.transform;
+            const clawTransform = clawEl.style.transform;
+            const parentAngleMatch = parentTransform.match(/rotate\(([^deg]+)deg\)/);
+            const clawAngleMatch = clawTransform.match(/rotate\(([^deg]+)deg\)/);
+            const parentAngle = parentAngleMatch ? parseFloat(parentAngleMatch[1]) : 0;
+            const clawAngle = clawAngleMatch ? parseFloat(clawAngleMatch[1]) : 0;
+            const finalAngle = state.angle + parentAngle + clawAngle;
+
+            world.appendChild(clawEl);
+            clawEl.style.left = `${finalX}px`;
+            clawEl.style.top = `${finalY}px`;
+            clawEl.style.transform = `rotate(${finalAngle}deg)`;
+            clawEl.classList.add('severed-claw');
+            clawEl.dataset.clawType = limb;
+            clawEl.style.zIndex = 5;
+
+            armEl.style.display = 'none';
+            state['has' + (limb.charAt(0).toUpperCase() + limb.slice(1)) + 'Arm'] = false;
+        }
+
+        function checkForCrabletPickup(playerClawEl, holdingHand) {
+            if (crabState.heldObject) return false;
+
+            const playerClawBox = getAbsoluteBoundingBox(playerClawEl);
+
+            for (const pilgrim of pilgrims) {
+                if (pilgrim.state.isCrablet && pilgrim.state.state !== 'held') {
+                    const crabletBodyBox = getAbsoluteBoundingBox(pilgrim.domElement);
+                    if (checkAABBCollision(playerClawBox, crabletBodyBox)) {
+                        pilgrim.state.state = 'held';
+                        crabState.heldObject = {
+                            type: 'crablet',
+                            pilgrim: pilgrim,
+                            holdingHand: holdingHand
+                        };
+                        playerClawEl.appendChild(pilgrim.domElement);
+                        pilgrim.domElement.style.left = '50px';
+                        pilgrim.domElement.style.top = '0px';
+                        pilgrim.domElement.style.transform = `rotate(15deg) scale(${pilgrim.state.scale})`; 
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function checkForClawPickup(playerClawEl, holdingHand) {
+            if (crabState.heldObject) return false;
+
+            const playerClawBox = getAbsoluteBoundingBox(playerClawEl);
+            const severedClaws = document.querySelectorAll('.severed-claw');
+
+            for (const severedClaw of severedClaws) {
+                const severedClawBox = getAbsoluteBoundingBox(severedClaw);
+                if (checkAABBCollision(playerClawBox, severedClawBox)) {
+                    crabState.heldObject = {
+                        type: 'claw',
+                        element: severedClaw,
+                        holdingHand: holdingHand
+                    };
+                    playerClawEl.appendChild(severedClaw);
+                    severedClaw.style.left = '120px';
+                    severedClaw.style.top = '10px';
+                    severedClaw.style.transform = 'rotate(15deg)';
+                    severedClaw.classList.remove('severed-claw');
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function checkForSeaweedPickup(playerClawEl, holdingHand) {
+            if (crabState.heldObject) return false;
+
+            const playerClawBox = getAbsoluteBoundingBox(playerClawEl);
+
+            for (let i = seaweeds.length - 1; i >= 0; i--) {
+                const seaweedContainer = seaweeds[i];
+                const seaweedBox = getAbsoluteBoundingBox(seaweedContainer);
+
+                if (checkAABBCollision(playerClawBox, seaweedBox)) {
+                    
+                    // --- New logic to calculate relative position ---
+
+                    // Get centers of the AABBs in world coordinates
+                    const seaweedCenterX = seaweedBox.x + seaweedBox.width / 2;
+                    const seaweedCenterY = seaweedBox.y + seaweedBox.height / 2;
+                    const clawCenterX = playerClawBox.x + playerClawBox.width / 2;
+                    const clawCenterY = playerClawBox.y + playerClawBox.height / 2;
+
+                    // Calculate the world offset vector from claw center to seaweed center
+                    const worldOffsetX = seaweedCenterX - clawCenterX;
+                    const worldOffsetY = seaweedCenterY - clawCenterY;
+
+                    // Get the total rotation of the claw in the world
+                    // The arm's angle is world-relative, and the claw's angle is arm-relative.
+                    // The sum gives the claw's final world-relative angle.
+                    const totalAngleDeg = (holdingHand === 'left') 
+                        ? crabState.leftArmAngle + crabState.leftClawAngle 
+                        : crabState.rightArmAngle + crabState.rightClawAngle;
+
+                    const theta = totalAngleDeg * (Math.PI / 180);
+                    const cosTheta = Math.cos(theta);
+                    const sinTheta = Math.sin(theta);
+
+                    // Rotate the world offset by the inverse of the claw's rotation
+                    // to get the local offset vector (in the claw's coordinate system).
+                    const localOffsetX = worldOffsetX * cosTheta + worldOffsetY * sinTheta;
+                    const localOffsetY = -worldOffsetX * sinTheta + worldOffsetY * cosTheta;
+
+                    // Get element dimensions to adjust from center to top-left for CSS 'left'/'top'
+                    const seaweedRect = seaweedContainer.getBoundingClientRect();
+                    const seaweedWorldWidth = seaweedRect.width / camera.zoom;
+                    const seaweedWorldHeight = seaweedRect.height / camera.zoom;
+
+                    const clawRect = playerClawEl.getBoundingClientRect();
+                    const clawWorldWidth = clawRect.width / camera.zoom;
+                    const clawWorldHeight = clawRect.height / camera.zoom;
+
+                    // The final position inside the claw is calculated relative to the claw's top-left corner.
+                    // It's the claw's center + the local offset - the seaweed's half-size.
+                    const finalLeft = (clawWorldWidth / 2) + localOffsetX - (seaweedWorldWidth / 2);
+                    const finalTop = (clawWorldHeight / 2) + localOffsetY - (seaweedWorldHeight / 2);
+
+                    crabState.heldObject = {
+                        type: 'seaweed',
+                        element: seaweedContainer,
+                        holdingHand: holdingHand
+                    };
+                    
+                    seaweeds.splice(i, 1);
+
+                    playerClawEl.appendChild(seaweedContainer);
+                    
+                    // Apply the calculated local position and remove any scaling/rotation from being held
+                    seaweedContainer.style.left = `${finalLeft}px`;
+                    seaweedContainer.style.top = `${finalTop}px`;
+                    seaweedContainer.style.transform = '';
+                    
+                    // Stop growth and sway animations
+                    seaweedContainer.style.animation = 'none';
+                    seaweedContainer.querySelector('.seaweed').style.animation = 'none';
+
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function dropHeldObject() {
+            if (!crabState.heldObject) return;
+
+            if (crabState.heldObject.type === 'claw') {
+                const clawToDrop = crabState.heldObject.element;
+                const clawRect = clawToDrop.getBoundingClientRect();
+                const screenCenterX = window.innerWidth / 2;
+                const screenCenterY = window.innerHeight / 2;
+                const finalX = (clawRect.left - screenCenterX) / camera.zoom + crabState.x;
+                const finalY = (clawRect.top - screenCenterY) / camera.zoom + crabState.y;
+
+                const holdingHand = crabState.heldObject.holdingHand;
+                const armAngle = holdingHand === 'left' ? crabState.leftArmAngle : crabState.rightArmAngle;
+                const clawAngle = holdingHand === 'left' ? crabState.leftClawAngle : crabState.rightClawAngle;
+                const finalAngle = armAngle + clawAngle + 15;
+
+                world.appendChild(clawToDrop);
+                clawToDrop.style.left = `${finalX}px`;
+                clawToDrop.style.top = `${finalY}px`;
+                clawToDrop.style.transform = `rotate(${finalAngle}deg)`;
+                clawToDrop.classList.add('severed-claw');
+            } else if (crabState.heldObject.type === 'crablet') {
+                const crabletPilgrim = crabState.heldObject.pilgrim;
+                const crabletElement = crabletPilgrim.domElement;
+                
+                const rect = crabletElement.getBoundingClientRect();
+                const screenCenterX = window.innerWidth / 2;
+                const screenCenterY = window.innerHeight / 2;
+                const finalX = (rect.left - screenCenterX) / camera.zoom + crabState.x;
+                const finalY = (rect.top - screenCenterY) / camera.zoom + crabState.y;
+
+                world.appendChild(crabletElement);
+                
+                crabletPilgrim.state.x = finalX;
+                crabletPilgrim.state.y = finalY;
+                crabletElement.style.left = `${finalX - (crabletPilgrim.state.width / 2)}px`;
+                crabletElement.style.top = `${finalY - (crabletPilgrim.state.height / 2)}px`;
+                crabletElement.style.transform = `rotate(${crabletPilgrim.state.angle}deg) scale(${crabletPilgrim.state.scale})`;
+                
+                crabletPilgrim.state.state = 'wandering'; 
+            } else if (crabState.heldObject.type === 'seaweed') {
+                const seaweedContainer = crabState.heldObject.element;
+                const seaweedEl = seaweedContainer.querySelector('.seaweed');
+                const rect = seaweedContainer.getBoundingClientRect();
+                const screenCenterX = window.innerWidth / 2;
+                const screenCenterY = window.innerHeight / 2;
+                const finalX = (rect.left - screenCenterX) / camera.zoom + crabState.x;
+                const finalY = (rect.top - screenCenterY) / camera.zoom + crabState.y;
+
+                world.appendChild(seaweedContainer);
+                seaweedContainer.style.left = `${finalX}px`;
+                seaweedContainer.style.top = `${finalY}px`;
+                seaweedContainer.style.transform = ''; // Reset transform
+                seaweedContainer.style.animation = ''; // Reset animation
+
+
+                // Start swaying again
+                const duration = Math.random() * 5 + 4;
+                const delay = Math.random() * 5;
+                seaweedEl.style.animation = `sway ${duration}s ease-in-out infinite`;
+                seaweedEl.style.animationDelay = `-${delay}s`;
+
+                seaweeds.push(seaweedContainer);
+            }
+
+            crabState.heldObject = null;
+            crabState.eatTimer = 0;
+        }
+        
+        function regenerateLimb(targetState, newClawElement, specificLimb = null) {
+            const tryRegen = (limb) => {
+                const hasLimbProp = 'has' + (limb.charAt(0).toUpperCase() + limb.slice(1)) + 'Arm';
+                if (!targetState[hasLimbProp]) {
+                    const armEl = targetState.domElements[limb + 'Arm'];
+                    
+                    if (targetState.domElements[limb + 'Claw']) {
+                        targetState.domElements[limb + 'Claw'].remove();
+                    }
+
+                    targetState.domElements[limb + 'Claw'] = newClawElement;
+                    
+                    if (targetState === crabState) {
+                        if (limb === 'left') leftClawEl = newClawElement;
+                        if (limb === 'right') rightClawEl = newClawElement;
+                    }
+
+                    armEl.appendChild(newClawElement);
+                    newClawElement.className = 'crab-part ' + limb + '-claw';
+                    newClawElement.style.left = '';
+                    newClawElement.style.top = '';
+                    newClawElement.style.transform = '';
+                    newClawElement.style.zIndex = '';
+                    
+                    const isOpenImage = imageUrls[limb + 'Open'];
+                    newClawElement.style.backgroundImage = `url('${isOpenImage}')`;
+                    
+                    armEl.style.display = 'block';
+                    
+                    targetState[hasLimbProp] = true;
+
+                    if (targetState === crabState) {
+                        if (limb === 'left') leftClawClosed = false;
+                        if (limb === 'right') rightClawClosed = false;
+                        updateClawImages();
+                    } else { 
+                        targetState.clawsClosed = false;
+                    }
+                    
+                    return true;
+                }
+                return false;
+            };
+
+            if (specificLimb) {
+                return tryRegen(specificLimb);
+            } else {
+                if (tryRegen('left')) return true;
+                if (tryRegen('right')) return true;
+                return false;
+            }
+        }
+        
+        function alertFollowersOfAtrocity(crimeX, crimeY) {
+            const SIGHT_RANGE_SQ = 800 * 800;
+            for (const pilgrim of pilgrims) {
+                if (pilgrim.state.leader === crabState) {
+                    const dx = pilgrim.state.x - crimeX;
+                    const dy = pilgrim.state.y - crimeY;
+                    const distanceSq = dx * dx + dy * dy;
+
+                    if (distanceSq < SIGHT_RANGE_SQ) {
+                        pilgrim.state.leader = null;
+                        pilgrim.state.state = 'warrior';
+                        pilgrim.state.targetCrab = crabState;
+                    }
+                }
+            }
+        }
+
+        function eatSeaweed() {
+            if (!crabState.heldObject || crabState.heldObject.type !== 'seaweed') return;
+
+            growCrab(1.01);
+
+            crabState.heldObject.element.remove();
+            crabState.heldObject = null;
+            crabState.eatTimer = 0;
+
+            spawnSeaweed();
+        }
+
+        function eatCrablet() {
+            if (!crabState.heldObject || crabState.heldObject.type !== 'crablet') return;
+            
+            const crabletPilgrim = crabState.heldObject.pilgrim;
+            
+            growCrab(1.03);
+            alertFollowersOfAtrocity(crabState.x, crabState.y);
+            
+            crabletPilgrim.domElement.remove();
+            const index = pilgrims.indexOf(crabletPilgrim);
+            if (index > -1) {
+                pilgrims.splice(index, 1);
+            }
+            
+            crabState.heldObject = null;
+            crabState.eatTimer = 0;
+        }
+
+        function consumeHeldClaw(clawElement) {
+            if (!crabState.hasLeftArm || !crabState.hasRightArm) {
+                 regenerateLimb(crabState, clawElement);
+            } else {
+                 growCrab(1.01);
+                 clawElement.remove();
+            }
+            crabState.heldObject = null;
+            crabState.eatTimer = 0;
+        }
+
+        function growCrab(factor) {
+            crabState.scale *= factor;
+        }
+
+        function checkForPlayerAttack(clawElement) {
+            const clawBox = getAbsoluteBoundingBox(clawElement);
+            for (const pilgrim of pilgrims) {
+                if (!pilgrim.state.isCrablet) {
+                    if (!pilgrim.state.hasLeftArm && !pilgrim.state.hasRightArm) continue;
+
+                    if (pilgrim.state.hasLeftArm) {
+                        const armBox = getAbsoluteBoundingBox(pilgrim.state.domElements.leftArm);
+                        if (checkAABBCollision(clawBox, armBox)) {
+                            detachLimb(pilgrim, 'left');
+                            pilgrim.state.leader = null;
+                            pilgrim.state.state = 'warrior';
+                            pilgrim.state.targetCrab = crabState;
+                            return;
+                        }
+                    }
+                    if (pilgrim.state.hasRightArm) {
+                        const armBox = getAbsoluteBoundingBox(pilgrim.state.domElements.rightArm);
+                        if (checkAABBCollision(clawBox, armBox)) {
+                            detachLimb(pilgrim, 'right');
+                            pilgrim.state.leader = null;
+                            pilgrim.state.state = 'warrior';
+                            pilgrim.state.targetCrab = crabState;
+                            return;
+                        }
+                    }
+                }
+             }
+        }
+        
+        function isCrabletNearby(x, y, radius) {
+            const radiusSq = radius * radius;
+            for (const pilgrim of pilgrims) {
+                if (pilgrim.state.isCrablet) {
+                    const dx = pilgrim.state.x - x;
+                    const dy = pilgrim.state.y - y;
+                    if (dx * dx + dy * dy < radiusSq) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+        
+        function gameLoop(timestamp) {
+            if (!crab) { requestAnimationFrame(gameLoop); return; }
+
+            const deltaTime = timestamp - lastTimestamp;
+            lastTimestamp = timestamp;
+
+            const isDark = lightOverlay.style.opacity > 0.5;
+            lightCycleTimer = (lightCycleTimer + deltaTime) % 40000;
+            let opacity = 1;
+            if (lightCycleTimer < 15000) opacity = 1;
+            else if (lightCycleTimer < 20000) opacity = 1 - (lightCycleTimer - 15000) / 5000;
+            else if (lightCycleTimer < 25000) opacity = 0;
+            else opacity = (lightCycleTimer - 25000) / 15000;
+            lightOverlay.style.opacity = opacity;
+
+            const halfScreenWidthInWorld = (window.innerWidth / 2) / camera.zoom;
+            const halfScreenHeightInWorld = (window.innerHeight / 2) / camera.zoom;
+
+            let cameraCenterX = Math.max(halfScreenWidthInWorld, Math.min(worldSize - halfScreenWidthInWorld, crabState.x));
+            let cameraCenterY = Math.max(halfScreenHeightInWorld, Math.min(worldSize - halfScreenHeightInWorld, crabState.y));
+            
+            const crabOnScreenX = (crabState.x - cameraCenterX) * camera.zoom + window.innerWidth / 2;
+            const crabOnScreenY = (crabState.y - cameraCenterY) * camera.zoom + window.innerHeight / 2;
+
+            const dx = mouse.x - crabOnScreenX;
+            const dy = mouse.y - crabOnScreenY;
+            const screenDistance = Math.sqrt(dx * dx + dy * dy);
+            
+            const stopRadius = 340;
+            const worldDistance = screenDistance / camera.zoom;
+            let playerSpeed = 0;
+
+            if ((crabState.hasLeftArm || crabState.hasRightArm) && worldDistance > stopRadius) {
+                const angleRad = Math.atan2(dy, dx);
+                crabState.angle = angleRad * (180 / Math.PI) - 90; 
+                const speedFactor = 0.03;
+                const maxSpeed = 8;
+                playerSpeed = Math.min(maxSpeed, (worldDistance - stopRadius) * speedFactor); 
+                crabState.x += Math.cos(angleRad) * playerSpeed;
+                crabState.y += Math.sin(angleRad) * playerSpeed;
+            }
+
+            const scaledWidth = crabState.width * crabState.scale;
+            const scaledHeight = crabState.height * crabState.scale;
+            crabState.x = Math.max(scaledWidth / 2, Math.min(worldSize - scaledWidth / 2, crabState.x));
+            crabState.y = Math.max(scaledHeight / 2, Math.min(worldSize - scaledHeight / 2, crabState.y));
+            
+            // --- Battle Music Logic ---
+            let currentlyFightingGoliath = false;
+            // Check if any NPC is in a warrior state, targeting the player, and is larger than the player.
+            for (const pilgrim of pilgrims) {
+                if (pilgrim.state.state === 'warrior' && pilgrim.state.targetCrab === crabState && pilgrim.state.scale > crabState.scale) {
+                    currentlyFightingGoliath = true;
+                    break; // Found a fight, no need to check further
+                }
+            }
+
+            // Check if the fighting state has changed since the last frame
+            if (currentlyFightingGoliath && !isFightingGoliath) {
+                // State changed: Player is now fighting a goliath
+                isFightingGoliath = true;
+                if (hasUserInteracted && timestamp - lastMusicPlayTime > 120000) { // 2 minutes cooldown
+                    musicSound.currentTime = 0;
+                    musicSound.play();
+                    lastMusicPlayTime = timestamp;
+                }
+            } else if (!currentlyFightingGoliath && isFightingGoliath) {
+                // State changed: Player is no longer fighting a goliath
+                isFightingGoliath = false;
+                musicSound.pause();
+            }
+            // --- End Battle Music Logic ---
+
+            crab.style.left = `${crabState.x - crabState.width / 2}px`;
+            crab.style.top = `${crabState.y - crabState.height / 2}px`;
+            crab.style.transform = `rotate(${crabState.angle}deg) scale(${crabState.scale})`;
+            
+            world.style.transformOrigin = `${cameraCenterX}px ${cameraCenterY}px`;
+            const cameraX = -cameraCenterX + window.innerWidth / 2;
+            const cameraY = -cameraCenterY + window.innerHeight / 2;
+            world.style.transform = `translate3d(${cameraX}px, ${cameraY}px, 0) scale(${camera.zoom})`;
+            
+            if (crabState.heldObject) {
+                const heldElement = crabState.heldObject.element || crabState.heldObject.pilgrim.domElement;
+                const heldElementBox = getAbsoluteBoundingBox(heldElement);
+                const playerBodyBox = getAbsoluteBoundingBox(crabState.domElements.body);
+                let repaired = false;
+
+                if (crabState.heldObject.type === 'claw') {
+                     if (!crabState.hasLeftArm) {
+                        const leftSocketBox = getSocketBox(crabState, 'left');
+                        if (checkAABBCollision(heldElementBox, leftSocketBox)) {
+                            regenerateLimb(crabState, crabState.heldObject.element, 'left');
+                            crabState.heldObject = null;
+                            repaired = true;
+                        }
+                    }
+                    if (!repaired && crabState.heldObject && !crabState.hasRightArm) {
+                        const rightSocketBox = getSocketBox(crabState, 'right');
+                        if (checkAABBCollision(heldElementBox, rightSocketBox)) {
+                            regenerateLimb(crabState, crabState.heldObject.element, 'right');
+                            crabState.heldObject = null;
+                            repaired = true;
+                        }
+                    }
+                    if (!repaired && crabState.heldObject) {
+                         for (const pilgrim of pilgrims) {
+                            const state = pilgrim.state;
+                             if (!state.hasLeftArm || !state.hasRightArm) {
+                                if (!state.hasLeftArm) {
+                                    const pilgrimSocketBox = getSocketBox(state, 'left');
+                                    if (checkAABBCollision(heldElementBox, pilgrimSocketBox)) {
+                                        regenerateLimb(state, crabState.heldObject.element, 'left');
+                                        crabState.heldObject = null;
+                                        if (state.leader !== crabState) { state.leader = crabState; state.state = 'following'; }
+                                        repaired = true;
+                                        break;
+                                    }
+                                }
+                                if (!repaired && crabState.heldObject && !state.hasRightArm) {
+                                    const pilgrimSocketBox = getSocketBox(state, 'right');
+                                    if (checkAABBCollision(heldElementBox, pilgrimSocketBox)) {
+                                        regenerateLimb(state, crabState.heldObject.element, 'right');
+                                        crabState.heldObject = null;
+                                        if (state.leader !== crabState) { state.leader = crabState; state.state = 'following'; }
+                                        repaired = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (crabState.heldObject) {
+                    if (!repaired && checkAABBCollision(heldElementBox, playerBodyBox)) {
+                        crabState.eatTimer += deltaTime;
+                        if (crabState.eatTimer >= 3000) {
+                             switch (crabState.heldObject.type) {
+                                case 'claw':
+                                    if (crabState.hasLeftArm && crabState.hasRightArm) {
+                                        consumeHeldClaw(crabState.heldObject.element);
+                                    }
+                                    break;
+                                case 'crablet':
+                                    eatCrablet();
+                                    break;
+                                case 'seaweed':
+                                    eatSeaweed();
+                                    break;
+                            }
+                        }
+                    } else {
+                        crabState.eatTimer = 0;
+                    }
+                }
+            } else if (crabState.eatTimer > 0) {
+                crabState.eatTimer = 0;
+            }
+
+            crabState.isDancing = mouseState.leftDown && mouseState.rightDown;
+
+            const armPivotOffsetY = 170 - crabState.height / 2;
+            const rightArmPivotOffsetX = (25 + 57 / 2) - crabState.width / 2;
+            const leftArmPivotOffsetX = (200 + 57 / 2) - crabState.width / 2; 
+            
+            const crabAngleRad = crabState.angle * (Math.PI / 180);
+            const cosCrab = Math.cos(crabAngleRad);
+            const sinCrab = Math.sin(crabAngleRad);
+
+            const rightShoulderX = crabOnScreenX + ((rightArmPivotOffsetX * cosCrab - armPivotOffsetY * sinCrab) * crabState.scale) * camera.zoom;
+            const rightShoulderY = crabOnScreenY + ((rightArmPivotOffsetX * sinCrab + armPivotOffsetY * cosCrab) * crabState.scale) * camera.zoom;
+            const leftShoulderX = crabOnScreenX + ((leftArmPivotOffsetX * cosCrab - armPivotOffsetY * sinCrab) * crabState.scale) * camera.zoom;
+            const leftShoulderY = crabOnScreenY + ((leftArmPivotOffsetX * sinCrab + armPivotOffsetY * cosCrab) * crabState.scale) * camera.zoom;
+            
+            const scaledArmLength = (ARM_LENGTH * crabState.scale) * camera.zoom;
+            const scaledClawLength = (CLAW_EFFECTIVE_LENGTH * crabState.scale) * camera.zoom;
+            
+            let finalRightArmAngleDeg, finalRightClawAngleDeg, finalLeftArmAngleDeg, finalLeftClawAngleDeg;
+            let currentControl = activeControl;
+            if (crabState.isDancing) currentControl = 'both';
+
+            if (currentControl === 'right' && crabState.hasRightArm) {
+                const { armAngleRad, clawAngleRad } = solveIK(rightShoulderX, rightShoulderY, mouse.x, mouse.y, scaledArmLength, scaledClawLength, false);
+                const armWorldAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                const clawWorldAngleDeg = (clawAngleRad - RIGHT_CLAW_INTERNAL_ANGLE_RAD) * (180 / Math.PI);
+                finalRightArmAngleDeg = armWorldAngleDeg;
+                finalRightClawAngleDeg = clawWorldAngleDeg - armWorldAngleDeg;
+                finalLeftArmAngleDeg = crabState.leftArmAngle;
+                finalLeftClawAngleDeg = crabState.leftClawAngle;
+            } else if (currentControl === 'left' && crabState.hasLeftArm) { 
+                const { armAngleRad, clawAngleRad } = solveIK(leftShoulderX, leftShoulderY, mouse.x, mouse.y, scaledArmLength, scaledClawLength, true);
+                const armWorldAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                const clawWorldAngleDeg = (clawAngleRad - LEFT_CLAW_INTERNAL_ANGLE_RAD) * (180 / Math.PI);
+                finalLeftArmAngleDeg = armWorldAngleDeg;
+                finalLeftClawAngleDeg = clawWorldAngleDeg - armWorldAngleDeg;
+                finalRightArmAngleDeg = crabState.rightArmAngle;
+                finalRightClawAngleDeg = crabState.rightClawAngle;
+            } else if (currentControl === 'both') {
+                const clawSeparation = 150; 
+                const mouseAngleRad = Math.atan2(mouse.y - crabOnScreenY, mouse.x - crabOnScreenX);
+                const offsetX = (clawSeparation / 2) * Math.cos(mouseAngleRad + Math.PI / 2);
+                const offsetY = (clawSeparation / 2) * Math.sin(mouseAngleRad + Math.PI / 2);
+
+                if (crabState.hasLeftArm) {
+                    const { armAngleRad, clawAngleRad } = solveIK(leftShoulderX, leftShoulderY, mouse.x - offsetX, mouse.y - offsetY, scaledArmLength, scaledClawLength, true);
+                    finalLeftArmAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                    finalLeftClawAngleDeg = (clawAngleRad - LEFT_CLAW_INTERNAL_ANGLE_RAD) * (180 / Math.PI) - finalLeftArmAngleDeg;
+                }
+                if (crabState.hasRightArm) {
+                    const { armAngleRad, clawAngleRad } = solveIK(rightShoulderX, rightShoulderY, mouse.x + offsetX, mouse.y + offsetY, scaledArmLength, scaledClawLength, false);
+                    finalRightArmAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                    finalRightClawAngleDeg = (clawAngleRad - RIGHT_CLAW_INTERNAL_ANGLE_RAD) * (180 / Math.PI) - finalRightArmAngleDeg;
+                }
+            } else { 
+                finalRightArmAngleDeg = crabState.rightArmAngle;
+                finalRightClawAngleDeg = crabState.rightClawAngle;
+                finalLeftArmAngleDeg = crabState.leftArmAngle;
+                finalLeftClawAngleDeg = crabState.leftClawAngle;
+            }
+            
+            crabState.rightArmAngle = finalRightArmAngleDeg;
+            crabState.rightClawAngle = finalRightClawAngleDeg;
+            crabState.leftArmAngle = finalLeftArmAngleDeg;
+            crabState.leftClawAngle = finalLeftClawAngleDeg;
+
+            if(crabState.hasRightArm) {
+                rightArm.style.transform = `rotate(${crabState.rightArmAngle - crabState.angle}deg)`;
+                rightClawEl.style.transform = `rotate(${crabState.rightClawAngle}deg)`;
+            }
+            if(crabState.hasLeftArm) {
+                leftArm.style.transform = `rotate(${crabState.leftArmAngle - crabState.angle}deg)`;
+                leftClawEl.style.transform = `rotate(${crabState.leftClawAngle}deg)`;
+            }
+
+            for (const pilgrim of pilgrims) {
+                const state = pilgrim.state;
+                const element = pilgrim.domElement;
+                if (state.state === 'held') continue;
+                const canMove = state.hasLeftArm || state.hasRightArm;
+
+                if (state.leader && state.state === 'following' && !state.isCrablet) {
+                    const leaderIsAdult = state.leader.isCrablet === false || typeof state.leader.isCrablet === 'undefined';
+                    
+                    if (leaderIsAdult && areCrabsColliding(state, state.leader)) {
+                        state.collisionWithPlayerTimer += deltaTime;
+                        if (state.collisionWithPlayerTimer >= 3000) {
+                            if (isDark && !isCrabletNearby(state.x, state.y, 100)) {
+                                spawnCrablet(state, state.leader);
+                            }
+                            state.collisionWithPlayerTimer = 0;
+                        }
+                    } else {
+                        state.collisionWithPlayerTimer = 0;
+                    }
+                }
+                
+                if (state.isCrablet && (state.state === 'wandering' || state.state === 'courting')) {
+                    const FLEE_RADIUS_SQ = 350 * 350;
+                    let fleeTarget = null;
+                    const dxP = state.x - crabState.x;
+                    const dyP = state.y - crabState.y;
+                    if ((dxP * dxP + dyP * dyP) < FLEE_RADIUS_SQ) {
+                        fleeTarget = crabState;
+                    } else {
+                        for (const other of pilgrims) {
+                            if (!other.state.isCrablet && other.state.state !== 'held') {
+                                const dx = state.x - other.state.x;
+                                const dy = state.y - other.state.y;
+                                if ((dx * dx + dy * dy) < FLEE_RADIUS_SQ) {
+                                    fleeTarget = other.state;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (fleeTarget) {
+                        state.state = 'fleeing';
+                        state.fleeFrom = fleeTarget;
+                        state.fleeTimer = 200;
+                    }
+                }
+
+                // --- Transition Logic ---
+                const isPlayerDisabled = !crabState.hasLeftArm && !crabState.hasRightArm;
+                
+                // NEW: Logic to attack giant crabs
+                if (!state.isCrablet && (state.state === 'wandering' || state.state === 'courting' || state.state === 'seeking_seaweed' || state.state === 'following')) {
+                    const GOLIATH_RANGE = 600;
+                    let targetGoliath = null;
+
+                    // Check against player
+                    if (crabState.scale >= 3.0) {
+                        const distToPlayer = Math.sqrt(Math.pow(state.x - crabState.x, 2) + Math.pow(state.y - crabState.y, 2));
+                        if (distToPlayer < GOLIATH_RANGE) {
+                            targetGoliath = crabState;
+                        }
+                    }
+
+                    // Check against other pilgrims if player is not a target
+                    if (!targetGoliath) {
+                        for (const other of pilgrims) {
+                            if (other.state === state || other.state.isCrablet) continue;
+                            if (other.state.scale >= 3.0) {
+                                const distToOther = Math.sqrt(Math.pow(state.x - other.state.x, 2) + Math.pow(state.y - other.state.y, 2));
+                                if (distToOther < GOLIATH_RANGE) {
+                                    targetGoliath = other.state;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (targetGoliath) {
+                        state.leader = null;
+                        state.state = 'warrior';
+                        state.targetCrab = targetGoliath;
+                    }
+                }
+
+
+                if (state.state === 'wandering' && canMove) {
+                    const nearbySeaweed = findNearestSeaweed(state.x, state.y, 700);
+                    if (nearbySeaweed) {
+                        state.state = 'seeking_seaweed';
+                        state.targetSeaweed = nearbySeaweed;
+                    }
+                }
+
+                if (state.state === 'wandering' && (state.hasLeftArm !== state.hasRightArm) && !state.heldObject) {
+                    const nearbyClaw = findNearestSeveredClaw(state.x, state.y, 500);
+                    if (nearbyClaw) {
+                        state.state = 'scavenging';
+                        state.scavengeTarget = nearbyClaw;
+                    }
+                } else if (state.state === 'following' && state.leader === crabState && isPlayerDisabled && !state.heldObject) {
+                    const nearbyClaw = findNearestSeveredClaw(state.x, state.y, 1000);
+                    if (nearbyClaw) {
+                        state.state = 'rescuing';
+                        state.scavengeTarget = nearbyClaw;
+                        state.rescueTarget = crabState;
+                    }
+                } else if (state.state !== 'warrior' && state.state !== 'fleeing' && state.state !== 'rescuing' && state.state !== 'scavenging' && !(state.state === 'following' && state.leader === crabState) && !state.isCrablet) {
+                    const distToPlayer = Math.sqrt(Math.pow(state.x - crabState.x, 2) + Math.pow(state.y - crabState.y, 2));
+                    const AGGRO_RANGE = 400;
+                    const AGGRESSION_SPEED_THRESHOLD = 5;
+
+                    if (distToPlayer < AGGRO_RANGE && playerSpeed > AGGRESSION_SPEED_THRESHOLD && (!leftClawClosed || !rightClawClosed)) {
+                        state.leader = null;
+                        state.state = !isDark ? 'warrior' : 'fleeing';
+                        state.fleeFrom = crabState;
+                        state.fleeTimer = 200; 
+                    } else {
+                        for (const other of pilgrims) {
+                            if (other === pilgrim) continue;
+                            if (other.state.state === 'fleeing' || other.state.state === 'warrior') {
+                                const distToOther = Math.sqrt(Math.pow(state.x - other.state.x, 2) + Math.pow(state.y - other.state.y, 2));
+                                if (distToOther < AGGRO_RANGE) {
+                                     state.leader = null;
+                                     state.state = !isDark && other.state.state === 'warrior' ? 'warrior' : 'fleeing';
+                                     state.targetCrab = !isDark ? other.state : null;
+                                     state.fleeFrom = other.state;
+                                     state.fleeTimer = 100; 
+                                     break; 
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // --- State Machine ---
+                switch (state.state) {
+                    case 'wandering':
+                        if (canMove) {
+                            if (!state.isCrablet) checkProximityAndFriendship(pilgrim);
+                            const dxToTarget = state.targetX - state.x;
+                            const dyToTarget = state.targetY - state.y;
+                            if (Math.sqrt(dxToTarget*dxToTarget + dyToTarget*dyToTarget) < 100) { 
+                                state.targetX = Math.random() * (worldSize - state.width);
+                                state.targetY = Math.random() * (worldSize - state.height);
+                            }
+                            const targetAngle = Math.atan2(dyToTarget, dxToTarget) * (180 / Math.PI) - 90;
+                            let angleDiff = targetAngle - state.angle;
+                            while (angleDiff < -180) angleDiff += 360;
+                            while (angleDiff > 180) angleDiff -= 360;
+                            state.angle += Math.max(-0.5, Math.min(0.5, angleDiff));
+                            const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                            state.x += Math.cos(moveAngleRad) * state.speed;
+                            state.y += Math.sin(moveAngleRad) * state.speed;
+                        }
+                        break;
+                    case 'seeking_seaweed':
+                        if (!state.targetSeaweed || !state.targetSeaweed.parentElement) {
+                            state.state = 'wandering';
+                            state.targetSeaweed = null;
+                            break;
+                        }
+
+                        for (const other of pilgrims) {
+                            if (other.state === state) continue;
+                            if (other.state.state === 'seeking_seaweed' && other.state.targetSeaweed === state.targetSeaweed) {
+                                state.state = 'warrior';
+                                state.targetCrab = other.state;
+                                state.targetSeaweed = null;
+                                
+                                other.state.state = 'warrior';
+                                other.state.targetCrab = state;
+                                other.state.targetSeaweed = null;
+                                break;
+                            }
+                        }
+                        if (state.state === 'warrior') break;
+
+                        const seaweedX = parseFloat(state.targetSeaweed.style.left) + 246 / 2;
+                        const seaweedY = parseFloat(state.targetSeaweed.style.top) + 430 / 2;
+                        
+                        const dxToSeaweed = seaweedX - state.x;
+                        const dyToSeaweed = seaweedY - state.y;
+                        const distToSeaweed = Math.sqrt(dxToSeaweed*dxToSeaweed + dyToSeaweed*dyToSeaweed);
+
+                        if (distToSeaweed < 50) {
+                            state.scale *= 1.01;
+                            
+                            const seaweedIndex = seaweeds.indexOf(state.targetSeaweed);
+                            if (seaweedIndex > -1) {
+                                state.targetSeaweed.remove();
+                                seaweeds.splice(seaweedIndex, 1);
+                            }
+
+                            spawnSeaweed();
+
+                            state.state = 'wandering';
+                            state.targetSeaweed = null;
+
+                        } else if (canMove) {
+                            const targetAngle = Math.atan2(dyToSeaweed, dxToSeaweed) * (180 / Math.PI) - 90;
+                            state.angle = targetAngle;
+                            const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                            state.x += Math.cos(moveAngleRad) * state.speed * 2.5;
+                            state.y += Math.sin(moveAngleRad) * state.speed * 2.5;
+                        }
+                        break;
+                    case 'scavenging':
+                         if (!state.scavengeTarget || state.scavengeTarget.parentElement !== world) {
+                            state.state = 'wandering'; state.scavengeTarget = null; break;
+                         }
+                         const targetX = parseFloat(state.scavengeTarget.style.left);
+                         const targetY = parseFloat(state.scavengeTarget.style.top);
+                         const dxToClaw = targetX - state.x;
+                         const dyToClaw = targetY - state.y;
+                         const distToClaw = Math.sqrt(dxToClaw * dxToClaw + dyToClaw * dyToClaw);
+                         if (distToClaw < 50) {
+                            if (state.isCrablet) {
+                                state.scale += 0.1;
+                                state.scavengeTarget.remove();
+                                if (state.scale >= 0.5) {
+                                    state.isCrablet = false;
+                                    state.scale = 1.0;
+                                }
+                            } else {
+                                regenerateLimb(state, state.scavengeTarget);
+                            }
+                            state.scavengeTarget = null;
+                            state.state = 'wandering';
+                         } else if (canMove) {
+                             const targetAngle = Math.atan2(dyToClaw, dxToClaw) * (180 / Math.PI) - 90;
+                             state.angle = targetAngle;
+                             const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                             state.x += Math.cos(moveAngleRad) * state.speed * 2;
+                             state.y += Math.sin(moveAngleRad) * state.speed * 2;
+                         }
+                         break;
+                    case 'rescuing':
+                         if (!state.heldObject) {
+                            if (!state.scavengeTarget || state.scavengeTarget.parentElement !== world) {
+                                state.state = 'following'; state.scavengeTarget = null; break;
+                            }
+                             const cX = parseFloat(state.scavengeTarget.style.left);
+                             const cY = parseFloat(state.scavengeTarget.style.top);
+                             const dX = cX - state.x;
+                             const dY = cY - state.y;
+                             if (Math.sqrt(dX * dX + dY * dY) < 50) {
+                                state.heldObject = { type: 'claw', element: state.scavengeTarget };
+                                state.scavengeTarget.style.display = 'none';
+                                state.scavengeTarget = null;
+                             } else if (canMove) {
+                                state.angle = Math.atan2(dY, dX) * (180 / Math.PI) - 90;
+                                const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                                state.x += Math.cos(moveAngleRad) * state.speed * 2;
+                                state.y += Math.sin(moveAngleRad) * state.speed * 2;
+                             }
+                         }
+                         else {
+                            if (!state.rescueTarget || (state.rescueTarget.hasLeftArm && state.rescueTarget.hasRightArm)) {
+                                if(state.heldObject) state.heldObject.element.remove();
+                                state.heldObject = null;
+                                state.state = 'following';
+                                break;
+                            }
+                            const dxToPlayer = state.rescueTarget.x - state.x;
+                            const dyToPlayer = state.rescueTarget.y - state.y;
+                            if (Math.sqrt(dxToPlayer * dxToPlayer + dyToPlayer * dyToPlayer) < 150) {
+                                regenerateLimb(state.rescueTarget, state.heldObject.element);
+                                state.heldObject = null;
+                                state.state = 'following';
+                            } else if (canMove) {
+                                state.angle = Math.atan2(dyToPlayer, dxToPlayer) * (180 / Math.PI) - 90;
+                                const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                                state.x += Math.cos(moveAngleRad) * state.speed * 1.5;
+                                state.y += Math.sin(moveAngleRad) * state.speed * 1.5;
+                            }
+                         }
+                         break;
+                    case 'courting':
+                        if (!state.leader) { state.state = 'wandering'; break; }
+                        const dxToLeader = state.leader.x - state.x;
+                        const dyToLeader = state.leader.y - state.y;
+                        if (areCrabsColliding(state, state.leader)) {
+                            state.state = 'following';
+                            state.clawsClosed = true;
+                        } else if (canMove) {
+                            const targetAngle = Math.atan2(dyToLeader, dxToLeader) * (180 / Math.PI) - 90;
+                            let angleDiff = targetAngle - state.angle;
+                            while (angleDiff < -180) angleDiff += 360;
+                            while (angleDiff > 180) angleDiff -= 360;
+                            state.angle += Math.max(-0.5, Math.min(0.5, angleDiff));
+                            const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                            state.x += Math.cos(moveAngleRad) * 1; 
+                            state.y += Math.sin(moveAngleRad) * 1;
+                        }
+                        break;
+                    case 'following':
+                        if (!state.leader) { state.state = 'wandering'; break; }
+                        if (canMove) {
+                            const leaderAngleRad = (state.leader.angle + 90) * Math.PI / 180;
+                            const targetX = state.leader.x - state.followDistance * Math.cos(leaderAngleRad);
+                            const targetY = state.leader.y - state.followDistance * Math.sin(leaderAngleRad);
+                            const dxToFollowTarget = targetX - state.x;
+                            const dyToFollowTarget = targetY - state.y;
+                            if (Math.sqrt(dxToFollowTarget*dxToFollowTarget + dyToFollowTarget*dyToFollowTarget) > 100) { 
+                                const followAngle = Math.atan2(dyToFollowTarget, dxToFollowTarget) * (180 / Math.PI) - 90;
+                                let angleDiff = followAngle - state.angle;
+                                while (angleDiff < -180) angleDiff += 360;
+                                while (angleDiff > 180) angleDiff -= 360;
+                                state.angle += Math.max(-1, Math.min(1, angleDiff));
+                                const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                                state.x += Math.cos(moveAngleRad) * state.speed;
+                                state.y += Math.sin(moveAngleRad) * state.speed;
+                            }
+                        }
+                        break;
+                    case 'warrior':
+                        const BOXING_RANGE_MAX = 300;
+                        const BOXING_RANGE_MIN = 200;
+                        const STRAFE_SPEED = 1;
+
+                        if (!state.targetCrab || (!state.targetCrab.hasLeftArm && !state.targetCrab.hasRightArm)) {
+                            state.targetCrab = null; 
+                            let closestDist = 500;
+                            let potentialTarget = null;
+                            const allTargets = [crabState, ...pilgrims.map(p => p.state)];
+                            for(const other of allTargets) {
+                                if(other === state || (other.leader && other.leader === state)) continue; 
+                                if(!other.hasLeftArm && !other.hasRightArm) continue;
+                                if (state.isCrablet && !other.isCrablet) continue;
+                                if (!state.isCrablet && other.isCrablet) continue;
+                                
+                                const dist = Math.sqrt(Math.pow(state.x - other.x, 2) + Math.pow(state.y - other.y, 2));
+                                if (dist < closestDist) {
+                                    closestDist = dist;
+                                    potentialTarget = other;
+                                }
+                            }
+                            state.targetCrab = potentialTarget;
+                             if (!state.targetCrab) { state.state = 'wandering'; state.isAttacking = false; break; }
+                        }
+                        
+                        if (state.targetCrab && canMove) {
+                            const dxToTarget = state.targetCrab.x - state.x;
+                            const dyToTarget = state.targetCrab.y - state.y;
+                            const dist = Math.sqrt(dxToTarget*dxToTarget + dyToTarget*dyToTarget);
+                            state.angle = Math.atan2(dyToTarget, dxToTarget) * (180 / Math.PI) - 90;
+                            const moveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                            if (dist > BOXING_RANGE_MAX) {
+                                state.x += Math.cos(moveAngleRad) * state.speed;
+                                state.y += Math.sin(moveAngleRad) * state.speed;
+                            } else if (dist < BOXING_RANGE_MIN) {
+                                state.x -= Math.cos(moveAngleRad) * state.speed;
+                                state.y -= Math.sin(moveAngleRad) * state.speed;
+                            } else {
+                                state.strafeTimer -= deltaTime;
+                                if (state.strafeTimer <= 0) {
+                                    state.strafeDirection *= -1;
+                                    state.strafeTimer = Math.random() * 1000 + 500;
+                                }
+                                const strafeAngleRad = moveAngleRad + (Math.PI / 2) * state.strafeDirection;
+                                state.x += Math.cos(strafeAngleRad) * STRAFE_SPEED;
+                                state.y += Math.sin(strafeAngleRad) * STRAFE_SPEED;
+                            }
+                            state.attackCooldown -= deltaTime;
+                            if (state.attackCooldown <= 0 && !state.isAttacking) {
+                                state.isAttacking = true;
+                                state.attackPhase = 'windup';
+                                state.attackTimer = 200;
+                                const attackWithRight = state.hasRightArm && (Math.random() > 0.5 || !state.hasLeftArm);
+                                state.attackArm = attackWithRight ? 'right' : 'left';
+                                const targetRight = state.targetCrab.hasRightArm && (Math.random() > 0.5 || !state.targetCrab.hasLeftArm);
+                                state.targetLimb = targetRight ? 'right' : 'left';
+                                const baseArmAngle = state.attackArm === 'left' ? 45 : -45;
+                                state.initialAttackAngles = { arm: baseArmAngle, claw: 0 };
+                                state.targetAttackAngles = { arm: baseArmAngle * 0.5, claw: 0 };
+                                state.attackCooldown = 2500 + Math.random() * 1000;
+                            }
+                        } else if (!canMove) {
+                             state.state = 'wandering';
+                        }
+                        break;
+                    case 'fleeing':
+                        if (state.fleeTimer <= 0 || !state.fleeFrom) {
+                            state.state = 'wandering';
+                            break;
+                        }
+                        if(canMove) {
+                            state.fleeTimer--;
+                            const dxAway = state.x - state.fleeFrom.x;
+                            const dyAway = state.y - state.fleeFrom.y;
+                            state.angle = Math.atan2(dyAway, dxAway) * (180 / Math.PI) - 90;
+                            const fleeMoveAngleRad = (state.angle + 90) * (Math.PI / 180);
+                            state.x += Math.cos(fleeMoveAngleRad) * state.speed * (state.isCrablet ? 1.5 : 1) * 2;
+                            state.y += Math.sin(fleeMoveAngleRad) * state.speed * (state.isCrablet ? 1.5 : 1) * 2;
+                        }
+                        break;
+                }
+                
+                const AVOIDANCE_FORCE = 0.5; 
+                let avoidanceX = 0;
+                let avoidanceY = 0;
+                for (const other of pilgrims) {
+                    if (pilgrim === other) continue; 
+                    const dx = state.x - other.state.x;
+                    const dy = state.y - other.state.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                     let requiredPersonalSpace = 100;
+                    if (distance < requiredPersonalSpace && distance > 0) {
+                        const pushFactor = (requiredPersonalSpace - distance) / requiredPersonalSpace;
+                        avoidanceX += (dx / distance) * pushFactor;
+                        avoidanceY += (dy / distance) * pushFactor;
+                    }
+                }
+                const dxPlayerPush = state.x - crabState.x;
+                const dyPlayerPush = state.y - crabState.y;
+                const distPlayer = Math.sqrt(dxPlayerPush * dxPlayerPush + dyPlayerPush * dyPlayerPush);
+
+                if (distPlayer < 100 && distPlayer > 0) {
+                    const pushFactor = (100 - distPlayer) / 100;
+                    avoidanceX += (dxPlayerPush / distPlayer) * pushFactor;
+                    avoidanceY += (dyPlayerPush / distPlayer) * pushFactor;
+                }
+                if(canMove){
+                    state.x += avoidanceX * AVOIDANCE_FORCE;
+                    state.y += avoidanceY * AVOIDANCE_FORCE;
+                }
+
+                state.x = Math.max(state.width / 2, Math.min(worldSize - state.width / 2, state.x));
+                state.y = Math.max(state.height / 2, Math.min(worldSize - state.height / 2, state.y));
+
+                element.style.left = `${state.x - state.width / 2}px`;
+                element.style.top = `${state.y - state.height / 2}px`;
+                element.style.transform = `rotate(${state.angle}deg) scale(${state.scale})`;
+
+                if (state.state === 'following' && state.leader === crabState && crabState.isDancing) {
+                    if(state.hasRightArm) {
+                        state.domElements.rightArm.style.transform = `rotate(${crabState.rightArmAngle - state.angle}deg)`;
+                        state.domElements.rightClaw.style.transform = `rotate(${crabState.rightClawAngle}deg)`;
+                        state.domElements.rightClaw.style.backgroundImage = rightClawEl.style.backgroundImage;
+                    }
+                     if(state.hasLeftArm) {
+                        state.domElements.leftArm.style.transform = `rotate(${crabState.leftArmAngle - state.angle}deg)`;
+                        state.domElements.leftClaw.style.transform = `rotate(${crabState.leftClawAngle}deg)`;
+                        state.domElements.leftClaw.style.backgroundImage = leftClawEl.style.backgroundImage;
+                    }
+                } else if (state.state === 'warrior') {
+                    if (state.isAttacking && state.attackArm) {
+                        state.attackTimer -= deltaTime;
+                        let progress = 0;
+                        const armEl = state.domElements[state.attackArm + 'Arm'];
+                        const clawEl = state.domElements[state.attackArm + 'Claw'];
+                        const otherArm = state.attackArm === 'left' ? 'right' : 'left';
+                        if(state['has' + (otherArm.charAt(0).toUpperCase() + otherArm.slice(1)) + 'Arm']) {
+                            const otherArmEl = state.domElements[otherArm + 'Arm'];
+                            const otherClawEl = state.domElements[otherArm + 'Claw'];
+                            const defaultAngle = otherArm === 'left' ? 45 : -45;
+                            otherArmEl.style.transform = `rotate(${defaultAngle}deg)`;
+                            otherClawEl.style.transform = `rotate(0deg)`;
+                        }
+
+                        switch(state.attackPhase) {
+                            case 'windup':
+                                if (state.attackTimer <= 0) {
+                                    state.attackPhase = 'lunge';
+                                    state.attackTimer = 500;
+                                    state.initialAttackAngles = state.targetAttackAngles;
+                                    const targetState = state.targetCrab;
+                                    const targetLimb = state.targetLimb;
+                                    if(!targetState || !targetState['has' + (targetLimb.charAt(0).toUpperCase() + targetLimb.slice(1)) + 'Arm']) {
+                                        state.isAttacking = false; state.attackPhase = 'none'; break;
+                                    }
+                                    const targetAngleRad = targetState.angle * (Math.PI / 180);
+                                    const cosTarget = Math.cos(targetAngleRad);
+                                    const sinTarget = Math.sin(targetAngleRad);
+                                    const armPivotOffsetY = 170 - targetState.height / 2;
+                                    const pivotOffsetX = targetLimb === 'left' ? (200 + 57/2) - targetState.width/2 : (25 + 57/2) - targetState.width/2;
+                                    const shoulderX = targetState.x + (pivotOffsetX * cosTarget - armPivotOffsetY * sinTarget);
+                                    const shoulderY = targetState.y + (pivotOffsetX * sinTarget + armPivotOffsetY * cosTarget);
+                                    const armWorldAngleRad = targetState[targetLimb + 'ArmAngle'] * (Math.PI / 180);
+                                    const wristX = shoulderX + ARM_LENGTH * Math.cos(armWorldAngleRad);
+                                    const wristY = shoulderY + ARM_LENGTH * Math.sin(armWorldAngleRad);
+                                    const warriorAngleRad = state.angle * (Math.PI / 180);
+                                    const cosWarrior = Math.cos(warriorAngleRad);
+                                    const sinWarrior = Math.sin(warriorAngleRad);
+                                    const warriorPivotOffsetY = 170 - state.height / 2;
+                                    const warriorPivotOffsetX = state.attackArm === 'left' ? (200 + 57/2) - state.width/2 : (25 + 57/2) - state.width/2;
+                                    const screenCenterX = window.innerWidth / 2;
+                                    const screenCenterY = window.innerHeight / 2;
+                                    const targetWristScreenX = (wristX - crabState.x) * camera.zoom + screenCenterX;
+                                    const targetWristScreenY = (wristY - crabState.y) * camera.zoom + screenCenterY;
+                                    const warriorShoulderWorldX = state.x + (warriorPivotOffsetX * cosWarrior - warriorPivotOffsetY * sinWarrior);
+                                    const warriorShoulderWorldY = state.y + (warriorPivotOffsetX * sinWarrior + warriorPivotOffsetY * cosWarrior);
+                                    const warriorShoulderScreenX = (warriorShoulderWorldX - crabState.x) * camera.zoom + screenCenterX;
+                                    const warriorShoulderScreenY = (warriorShoulderWorldY - crabState.y) * camera.zoom + screenCenterY;
+                                    const { armAngleRad, clawAngleRad } = solveIK(warriorShoulderScreenX, warriorShoulderScreenY, targetWristScreenX, targetWristScreenY, ARM_LENGTH * camera.zoom, CLAW_EFFECTIVE_LENGTH * camera.zoom, state.attackArm === 'left');
+                                    const armWorldAngleDeg = armAngleRad * (180 / Math.PI) - 90;
+                                    const internalAngleRad = state.attackArm === 'left' ? LEFT_CLAW_INTERNAL_ANGLE_RAD : RIGHT_CLAW_INTERNAL_ANGLE_RAD;
+                                    const clawWorldAngleDeg = (clawAngleRad - internalAngleRad) * (180 / Math.PI);
+                                    state.targetAttackAngles = { arm: armWorldAngleDeg, claw: clawWorldAngleDeg - armWorldAngleDeg };
+                                }
+                                break;
+                            case 'lunge':
+                                progress = 1 - (state.attackTimer / 500);
+                                const lungeArmAngle = state.initialAttackAngles.arm + (state.targetAttackAngles.arm - state.initialAttackAngles.arm) * progress;
+                                const lungeClawAngle = state.initialAttackAngles.claw + (state.targetAttackAngles.claw - state.initialAttackAngles.claw) * progress;
+                                armEl.style.transform = `rotate(${lungeArmAngle - state.angle}deg)`;
+                                clawEl.style.transform = `rotate(${lungeClawAngle}deg)`;
+                                const attackerClawBox = getAbsoluteBoundingBox(clawEl);
+                                const targetCrabObject = state.targetCrab === crabState ? {state: crabState} : pilgrims.find(p => p.state === state.targetCrab);
+                                const targetArmEl = targetCrabObject?.state.domElements[state.targetLimb + 'Arm'];
+                                if(targetArmEl) {
+                                    const targetArmBox = getAbsoluteBoundingBox(targetArmEl);
+                                    if(checkAABBCollision(attackerClawBox, targetArmBox)) {
+                                         detachLimb(targetCrabObject, state.targetLimb);
+                                         state.attackPhase = 'retract'; 
+                                         state.attackTimer = 300;
+                                         state.initialAttackAngles = { arm: lungeArmAngle, claw: lungeClawAngle };
+                                         const baseArmAngle = state.attackArm === 'left' ? 45 : -45;
+                                         state.targetAttackAngles = { arm: state.angle + baseArmAngle, claw: 0 };
+                                    }
+                                }
+                                if (state.attackTimer <= 0) {
+                                    state.attackPhase = 'retract';
+                                    state.attackTimer = 300;
+                                    state.initialAttackAngles = state.targetAttackAngles;
+                                    const baseArmAngle = state.attackArm === 'left' ? 45 : -45;
+                                    state.targetAttackAngles = { arm: state.angle + baseArmAngle, claw: 0 };
+                                }
+                                break;
+                            case 'retract':
+                                progress = 1 - (state.attackTimer / 300);
+                                const retractArmAngle = state.initialAttackAngles.arm + (state.targetAttackAngles.arm - state.initialAttackAngles.arm) * progress;
+                                const retractClawAngle = state.initialAttackAngles.claw + (state.targetAttackAngles.claw - state.initialAttackAngles.claw) * progress;
+                                armEl.style.transform = `rotate(${retractArmAngle - state.angle}deg)`;
+                                clawEl.style.transform = `rotate(${retractClawAngle}deg)`;
+                                if (state.attackTimer <= 0) {
+                                    state.isAttacking = false;
+                                    state.attackPhase = 'none';
+                                }
+                                break;
+                        }
+
+                        if(state.attackPhase === 'windup') {
+                            progress = 1 - (state.attackTimer / 200);
+                            const currentArmAngle = state.initialAttackAngles.arm + (state.targetAttackAngles.arm - state.initialAttackAngles.arm) * progress;
+                            armEl.style.transform = `rotate(${currentArmAngle}deg)`;
+                        }
+                    } else {
+                        if(state.hasLeftArm) {
+                            state.domElements.leftArm.style.transform = `rotate(45deg)`;
+                            state.domElements.leftClaw.style.transform = `rotate(0deg)`;
+                        }
+                         if(state.hasRightArm){
+                            state.domElements.rightClaw.style.backgroundImage = `url('${imageUrls.rightOpen}')`;
+                            state.domElements.rightArm.style.transform = `rotate(-45deg)`;
+                            state.domElements.rightClaw.style.transform = `rotate(0deg)`;
+                        }
+                    }
+                }
+                else {
+                    updatePilgrimClaws(pilgrim);
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+    </script>
+</body>
+</html>
